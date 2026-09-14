@@ -2,6 +2,8 @@
 
 use Illuminate\Support\Facades\Schema;
 use Peppermint\Tasks\Models\Task;
+use Peppermint\Tasks\Tests\Support\Fertig;
+use Peppermint\Tasks\Tests\Support\GecastetesStatusEnum;
 use Peppermint\Tasks\Tests\Support\Offen;
 
 /**
@@ -41,4 +43,26 @@ it('faellt auf den Paketnamen zurueck, wo das Produkt nichts abbildet', function
 
     expect(Task::column('due_date'))->toBe('faellig_am')
         ->and(Task::column('title'))->toBe('title');
+});
+
+it('liest den Status auch, wenn das Produkt die Spalte auf ein Enum castet', function () {
+    // Der Fall, an dem die erste echte Anbindung aufgelaufen ist: Der
+    // Peppermint Manager castet `status` auf ein Enum, und das Paket bekam
+    // dann ein Objekt statt einer Zeichenkette. Ein Produkt, das seine Spalten
+    // castet, ist der Normalfall — nicht die Ausnahme, auf die man verzichten
+    // kann.
+    config()->set('tasks.statuses', [Offen::class, Fertig::class]);
+
+    $model = new class extends Task
+    {
+        protected $table = 'tasks';
+
+        protected $casts = ['status' => GecastetesStatusEnum::class];
+    };
+
+    $model->fill(['title' => 'Mit Enum', 'status' => 'fertig'])->save();
+
+    expect($model->field('status'))->toBeInstanceOf(GecastetesStatusEnum::class)
+        ->and($model->statusDefinition()?->key())->toBe('fertig')
+        ->and($model->isTerminal())->toBeTrue();
 });

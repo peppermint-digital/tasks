@@ -2,6 +2,7 @@
 
 namespace Peppermint\Tasks\Models;
 
+use BackedEnum;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -62,7 +63,12 @@ class Task extends Model
      */
     public function statusDefinition(): ?TaskStatus
     {
-        $key = (string) $this->field('status');
+        $key = static::scalar($this->field('status'));
+
+        if ($key === null) {
+            return null;
+        }
+
         $registry = app(StatusRegistry::class);
 
         return $registry->has($key) ? $registry->get($key) : null;
@@ -70,15 +76,30 @@ class Task extends Model
 
     public function priorityDefinition(): ?TaskPriority
     {
-        $key = $this->field('priority');
+        $key = static::scalar($this->field('priority'));
 
-        if ($key === null || $key === '') {
+        if ($key === null) {
             return null;
         }
 
         $registry = app(PriorityRegistry::class);
 
-        return $registry->has((string) $key) ? $registry->get((string) $key) : null;
+        return $registry->has($key) ? $registry->get($key) : null;
+    }
+
+    /**
+     * The stored key behind a field, whatever shape the product keeps it in.
+     *
+     * A product casting its status column to a backed enum is entirely normal
+     * — and then the field does not hand back a string. Without this, adopting
+     * a grown application fails at the first read, which is exactly the
+     * situation the package is supposed to handle.
+     */
+    protected static function scalar(mixed $value): ?string
+    {
+        $key = $value instanceof BackedEnum ? (string) $value->value : $value;
+
+        return ($key === null || $key === '') ? null : (string) $key;
     }
 
     /** Finished, one way or the other. Unknown state counts as not finished. */

@@ -6,6 +6,8 @@ use Illuminate\Support\ServiceProvider;
 use InvalidArgumentException;
 use Peppermint\Tasks\Priority\PriorityRegistry;
 use Peppermint\Tasks\Priority\TaskPriority;
+use Peppermint\Tasks\Sources\TaskSource;
+use Peppermint\Tasks\Sources\TaskSourceRegistry;
 use Peppermint\Tasks\Status\StatusRegistry;
 use Peppermint\Tasks\Status\TaskStatus;
 use Peppermint\Tasks\Urgency\FactorRegistry;
@@ -39,6 +41,13 @@ class TasksServiceProvider extends ServiceProvider
             'urgency factor',
         ));
 
+        $this->app->singleton(TaskSourceRegistry::class, fn ($app) => $this->build(
+            new TaskSourceRegistry,
+            (array) $app['config']->get('tasks.sources', []),
+            TaskSource::class,
+            'task source',
+        ));
+
         $this->app->singleton(UrgencyEngine::class);
     }
 
@@ -60,7 +69,7 @@ class TasksServiceProvider extends ServiceProvider
      * otherwise surface much later as a missing method on something nobody
      * expected to be there.
      *
-     * @template T of StatusRegistry|PriorityRegistry|FactorRegistry
+     * @template T of StatusRegistry|PriorityRegistry|FactorRegistry|TaskSourceRegistry
      *
      * @param  T  $registry
      * @param  array<int, class-string>  $classes

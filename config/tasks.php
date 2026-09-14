@@ -85,6 +85,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Foreign task sources
+    |--------------------------------------------------------------------------
+    |
+    | Tasks of other systems, shown alongside the local ones. Read-only: they
+    | are displayed, never copied — a copy would be a second truth with a
+    | reconciliation problem.
+    |
+    | Neither system is the centre. Each application registers the sources it
+    | wants to see, the same way the calendar package does it.
+    |
+    | Each entry is the class name of a Peppermint\Tasks\Sources\TaskSource.
+    */
+    'sources' => [],
+
+    /*
+    |--------------------------------------------------------------------------
     | Tables
     |--------------------------------------------------------------------------
     |

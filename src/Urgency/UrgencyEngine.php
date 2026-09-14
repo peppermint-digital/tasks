@@ -31,7 +31,7 @@ class UrgencyEngine
     /** The number, rounded like the Manager has always rounded it. */
     public function score(Task $task): float
     {
-        return round($this->breakdown($task)['total'], 1);
+        return $this->breakdown($task)['total'];
     }
 
     /**
@@ -54,27 +54,39 @@ class UrgencyEngine
 
         $parts = [];
 
+        $roh = [];
+
         foreach ($this->factors->all() as $key => $factor) {
             if ($nur !== null && ! in_array($key, $nur, true)) {
                 continue;
             }
 
-            $value = round($factor->score($task), 1);
+            $value = $factor->score($task);
 
             // Zero is left out, not listed as zero: the breakdown is meant to
             // explain, and a wall of zeroes explains nothing.
-            if ($value === 0.0) {
+            if ($value == 0.0) {
                 continue;
             }
 
+            $roh[$key] = $value;
+
             $parts[$key] = [
                 'label' => $factor->label($task),
-                'value' => $value,
+                // Rounded for reading. The total is NOT the sum of these.
+                'value' => round($value, 1),
             ];
         }
 
+        // Summed unrounded, rounded once at the end.
+        //
+        // Not the sum of the displayed values: rounding every factor first and
+        // adding them up drifts by up to half a tenth per factor, and with a
+        // dozen factors that is a visibly different number. The score decides
+        // what sits at the top of somebody's morning — it must not move
+        // because of how it is displayed.
         return [
-            'total' => array_sum(array_column($parts, 'value')),
+            'total' => round(array_sum($roh), 1),
             'factors' => $parts,
         ];
     }

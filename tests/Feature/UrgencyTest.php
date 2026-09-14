@@ -142,3 +142,60 @@ it('beschraenkt die Faktoren, wenn die Aufgabe das verlangt', function () {
         ->and($beschraenkt->urgencyBreakdown()['factors'])->toHaveKeys(['status'])
         ->and($beschraenkt->urgencyBreakdown()['factors'])->not->toHaveKey('priority');
 });
+
+it('summiert ungerundet und rundet einmal am Ende', function () {
+    // Wuerde jeder Faktor zuerst gerundet und dann addiert, drifteten die
+    // Werte um bis zu einem halben Zehntel je Faktor. Bei einem Dutzend
+    // Faktoren ist das eine sichtbar andere Zahl — und die Zahl entscheidet,
+    // was morgens oben auf der Liste steht. Sie darf sich nicht danach
+    // richten, wie sie angezeigt wird.
+    $krumm = new class extends UrgencyFactor
+    {
+        public function key(): string
+        {
+            return 'krumm';
+        }
+
+        public function label(Task $task): string
+        {
+            return 'Krummer Wert';
+        }
+
+        public function score(Task $task): float
+        {
+            return 0.04;
+        }
+    };
+
+    $register = app(FactorRegistry::class);
+    foreach (array_keys($register->all()) as $key) {
+        $register->forget($key);
+    }
+
+    // Zehnmal 0.04 sind 0.4. Einzeln gerundet waeren es zehnmal 0.0.
+    for ($i = 0; $i < 10; $i++) {
+        $register->register(new class($i) extends UrgencyFactor
+        {
+            public function __construct(private int $i) {}
+
+            public function key(): string
+            {
+                return 'krumm'.$this->i;
+            }
+
+            public function label(Task $task): string
+            {
+                return 'Krumm';
+            }
+
+            public function score(Task $task): float
+            {
+                return 0.04;
+            }
+        });
+    }
+
+    $task = Task::create(['title' => 'Viele kleine', 'status' => 'offen']);
+
+    expect($task->urgency())->toBe(0.4);
+});

@@ -155,9 +155,15 @@ class Task extends Model
         return $this->belongsTo(config('tasks.user_model'), static::column('assigned_to'));
     }
 
-    /** Everything that is not finished, in this application's vocabulary. */
+    /**
+     * Everything still to do, in this application's vocabulary.
+     *
+     * Enumerated, not negated: a row carrying a status nobody registered is a
+     * data problem, and "not terminal" would sweep it into the open list where
+     * it looks like ordinary work. See StatusRegistry::openKeys().
+     */
     public function scopeOpen($query)
     {
-        return $query->whereNotIn(static::column('status'), app(StatusRegistry::class)->terminalKeys());
+        return $query->whereIn(static::column('status'), app(StatusRegistry::class)->openKeys());
     }
 }

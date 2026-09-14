@@ -38,6 +38,24 @@ class StatusRegistry
     }
 
     /**
+     * The keys that are still to do — the registered ones, not "everything
+     * that is not terminal".
+     *
+     * The difference matters the moment a row carries a status nobody
+     * registered: a renamed value, a typo, an import from elsewhere.
+     * "Not terminal" sweeps those into the open list, where they look like
+     * ordinary work and quietly hide the fact that the data is broken. That is
+     * how Bug #582 happened in AI Brain, and the fix there was exactly this —
+     * enumerate instead of negate.
+     *
+     * @return array<int, string>
+     */
+    public function openKeys(): array
+    {
+        return array_keys(array_filter($this->statuses, fn (TaskStatus $s) => ! $s->isTerminal()));
+    }
+
+    /**
      * The keys that count as finished.
      *
      * Useful for the "what is still open" queries every application writes —

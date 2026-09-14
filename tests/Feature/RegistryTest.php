@@ -49,10 +49,27 @@ it('laesst eine Aufgabe lesbar, deren Status aus dem Vokabular gefallen ist', fu
         ->and($task->urgency())->toBe(0.0);
 });
 
-it('findet mit dem offen-Scope alles, was nicht terminal ist', function () {
+it('findet mit dem offen-Scope die angemeldeten offenen Status', function () {
     Task::create(['title' => 'A', 'status' => 'offen']);
     Task::create(['title' => 'B', 'status' => 'geparkt']);
     Task::create(['title' => 'C', 'status' => 'fertig']);
 
-    expect(Task::open()->pluck('title')->all())->toBe(['A', 'B']);
+    // Ohne ORDER BY darf die Datenbank sortieren, wie sie will — geprueft
+    // wird, WAS drin ist, nicht in welcher Folge.
+    expect(Task::open()->pluck('title')->all())->toEqualCanonicalizing(['A', 'B']);
+});
+
+it('zaehlt die offenen Status auf, statt die terminalen auszuschliessen', function () {
+    // Der Unterschied zeigt sich erst an kaputten Daten: Ein Status, den
+    // niemand angemeldet hat — umbenannt, vertippt, von woanders importiert —
+    // waere mit „nicht terminal" in der Liste der offenen Aufgaben gelandet
+    // und haette dort wie gewoehnliche Arbeit ausgesehen.
+    //
+    // Genau so ist Bug #582 im AI Brain entstanden. Die Korrektur dort war
+    // dieselbe: aufzaehlen statt verneinen.
+    Task::create(['title' => 'Echt offen', 'status' => 'offen']);
+    Task::create(['title' => 'Kaputter Wert', 'status' => 'laengst_umbenannt']);
+
+    expect(Task::open()->pluck('title')->all())->toBe(['Echt offen'])
+        ->and(app(StatusRegistry::class)->openKeys())->toEqualCanonicalizing(['offen', 'in_arbeit', 'geparkt']);
 });

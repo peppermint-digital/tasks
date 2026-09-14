@@ -87,6 +87,25 @@ class Task extends Model
         return $this->statusDefinition()?->isTerminal() ?? false;
     }
 
+    /**
+     * Beschraenkt die Dringlichkeit auf bestimmte Faktoren. Null heisst: alle.
+     *
+     * Fuer Aufgaben, die nicht im selben Rennen laufen sollen wie echte Arbeit
+     * — wiederkehrende Routinen etwa. Sie kommen ohnehin wieder; wuerden sie
+     * normal gewichtet, stuenden sie mit Alter und Prioritaet dauerhaft in der
+     * Liste und verdraengten, was einmal zu tun ist.
+     *
+     * Eine Anwendung ueberschreibt das und nennt die Faktoren, die trotzdem
+     * zaehlen sollen — typischerweise den Handgriff, mit dem ein Mensch eine
+     * Routine fuer heute doch nach oben holt.
+     *
+     * @return array<int, string>|null
+     */
+    public function restrictUrgencyTo(): ?array
+    {
+        return null;
+    }
+
     public function urgency(): float
     {
         return app(UrgencyEngine::class)->score($this);

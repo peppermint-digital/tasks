@@ -48,9 +48,17 @@ class UrgencyEngine
             return ['total' => 0.0, 'factors' => []];
         }
 
+        // Manche Aufgaben laufen nicht im selben Rennen — siehe
+        // Task::restrictUrgencyTo().
+        $nur = $task->restrictUrgencyTo();
+
         $parts = [];
 
         foreach ($this->factors->all() as $key => $factor) {
+            if ($nur !== null && ! in_array($key, $nur, true)) {
+                continue;
+            }
+
             $value = round($factor->score($task), 1);
 
             // Zero is left out, not listed as zero: the breakdown is meant to

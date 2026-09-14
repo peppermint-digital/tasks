@@ -120,3 +120,25 @@ it('laesst die Anwendung einen mitgelieferten Faktor abwaehlen', function () {
 
     expect($task->urgency())->toBe(0.0);
 });
+
+it('beschraenkt die Faktoren, wenn die Aufgabe das verlangt', function () {
+    // Routinen sollen nicht im selben Rennen laufen wie echte Arbeit: Sie
+    // kommen ohnehin wieder. Mit Alter und Prioritaet gewichtet stuenden sie
+    // dauerhaft oben und verdraengten, was einmal zu tun ist.
+    $beschraenkt = new class extends Task
+    {
+        protected $table = 'tasks';
+
+        public function restrictUrgencyTo(): ?array
+        {
+            return ['status'];
+        }
+    };
+
+    $beschraenkt->fill(['title' => 'Routine', 'status' => 'in_arbeit', 'priority' => 'dringend'])->save();
+
+    // Ohne Beschraenkung waeren es 12.0 (8.0 Prioritaet + 4.0 Status).
+    expect($beschraenkt->urgency())->toBe(4.0)
+        ->and($beschraenkt->urgencyBreakdown()['factors'])->toHaveKeys(['status'])
+        ->and($beschraenkt->urgencyBreakdown()['factors'])->not->toHaveKey('priority');
+});

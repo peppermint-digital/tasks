@@ -31,6 +31,11 @@ return new class extends Migration
             $blueprint->string('title');
             $blueprint->string('status');
 
+            // Which sort of work this is. Nullable, because a product with one
+            // sort of task needs no kinds — and forcing a placeholder value on
+            // it would be the label we are trying to avoid.
+            $blueprint->string('kind')->nullable();
+
             // Ring 2 — measured against iCalendar VTODO.
             $blueprint->text('description')->nullable();
             $blueprint->string('priority')->nullable();
@@ -47,6 +52,7 @@ return new class extends Migration
             $blueprint->timestamps();
 
             $blueprint->index('status');
+            $blueprint->index('kind');
             $blueprint->index('due_date');
             $blueprint->index('assigned_to');
             $blueprint->index(['subject_type', 'subject_id']);

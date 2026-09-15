@@ -28,11 +28,29 @@ class TaskSourceRegistry
     }
 
     /**
+     * The sources that are usable right now.
+     *
+     * This is where autonomy becomes visible: a product the person has no
+     * access to does not appear as an empty section or a dead filter entry, it
+     * is simply not there. Asked each time rather than cached — access can be
+     * withdrawn between two page loads, and a stale "yes" shows a section that
+     * then cannot be filled.
+     *
+     * @return array<string, TaskSource>
+     */
+    public function available(): array
+    {
+        return array_filter($this->sources, fn (TaskSource $source) => $source->isAvailable());
+    }
+
+    /**
      * Collects from every source, skipping the ones named in $skip.
      *
      * A source that is switched off is NOT ASKED, not merely hidden
      * afterwards: it means a call to another system, and that call should not
      * happen when nobody wants to see the result.
+     *
+     * A source that is not available is not asked either — see available().
      *
      * A source that fails is logged and skipped. One unreachable system must
      * not take down the local task list — a page that shows nothing because
@@ -45,7 +63,7 @@ class TaskSourceRegistry
     {
         $tasks = [];
 
-        foreach ($this->sources as $key => $source) {
+        foreach ($this->available() as $key => $source) {
             if (in_array($key, $skip, true)) {
                 continue;
             }

@@ -33,6 +33,24 @@ abstract class TaskSource
     abstract public function tasks(int $userId): array;
 
     /** Colour for the chip. Null means the application decides. */
+    /**
+     * Is this source usable at all right now?
+     *
+     * The autonomy rule: a product that is not connected, not allowed to be
+     * called back, or does not offer the operation must disappear by itself —
+     * no tasks shown, no filter entry, nothing to create. A person without CRM
+     * access has no CRM tasks, and that is not an error state to report but the
+     * correct answer.
+     *
+     * Measured, not configured: the calendar package learned this the same way.
+     * A source that asks the registry loses its entry the moment the other side
+     * loses the capability, without anyone remembering to switch it off.
+     */
+    public function isAvailable(): bool
+    {
+        return true;
+    }
+
     public function colour(): ?string
     {
         return null;

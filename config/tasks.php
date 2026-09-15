@@ -1,5 +1,10 @@
 <?php
 
+use Peppermint\Tasks\Urgency\Factors\AgeFactor;
+use Peppermint\Tasks\Urgency\Factors\DueDateFactor;
+use Peppermint\Tasks\Urgency\Factors\PriorityFactor;
+use Peppermint\Tasks\Urgency\Factors\StatusFactor;
+
 return [
     /*
     |--------------------------------------------------------------------------
@@ -26,6 +31,13 @@ return [
     |
     | Each entry is the class name of a Peppermint\Tasks\Status\TaskStatus.
     */
+    /*
+    | The kinds of task this application has. Empty is a valid answer — a
+    | product with one sort of task needs none, and a kind that forbids nothing
+    | is a label wearing the word.
+    */
+    'kinds' => [],
+
     'statuses' => [],
 
     /*
@@ -57,10 +69,10 @@ return [
     | Each entry is the class name of a Peppermint\Tasks\Urgency\UrgencyFactor.
     */
     'urgency_factors' => [
-        Peppermint\Tasks\Urgency\Factors\PriorityFactor::class,
-        Peppermint\Tasks\Urgency\Factors\DueDateFactor::class,
-        Peppermint\Tasks\Urgency\Factors\StatusFactor::class,
-        Peppermint\Tasks\Urgency\Factors\AgeFactor::class,
+        PriorityFactor::class,
+        DueDateFactor::class,
+        StatusFactor::class,
+        AgeFactor::class,
     ],
 
     /*

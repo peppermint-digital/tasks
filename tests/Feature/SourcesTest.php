@@ -1,6 +1,7 @@
 <?php
 
 use Peppermint\Tasks\Sources\ForeignTask;
+use Peppermint\Tasks\Sources\TaskSource;
 use Peppermint\Tasks\Sources\TaskSourceRegistry;
 use Peppermint\Tasks\Tests\Support\ErfundeneQuelle;
 
@@ -58,4 +59,74 @@ it('traegt den Dringlichkeitswert, aber nicht die Aufschluesselung', function ()
 
     expect($daten['urgency'])->toBe(9.5)
         ->and($daten)->not->toHaveKey('factors');
+});
+
+it('laesst die Art des anderen Systems mitreisen', function () {
+    // Der Sinn EINER gemeinsamen Liste ist, sie filtern zu koennen: „ich habe
+    // noch drei Verwaltungssachen offen". Ohne die Art kann die fremde Haelfte
+    // das nicht beantworten — und ein Filter, der stillschweigend nur die
+    // Haelfte erfasst, ist schlechter als keiner.
+    $fremd = new ForeignTask(
+        sourceKey: 'verwaltung',
+        id: 42,
+        title: 'Rechnung schreiben',
+        kind: 'ticket',
+        kindLabel: 'Ticket',
+    );
+
+    expect($fremd->toArray()['kind'])->toBe('ticket')
+        ->and($fremd->toArray()['kind_label'])->toBe('Ticket');
+});
+
+it('faellt beim Beschriften auf den Schluessel zurueck', function () {
+    // Ein System, das seine Arten nicht benennt, soll trotzdem filterbar sein.
+    $fremd = new ForeignTask(
+        sourceKey: 'crm',
+        id: 7,
+        title: 'Nachfassen',
+        kind: 'wiedervorlage',
+    );
+
+    expect($fremd->toArray()['kind_label'])->toBe('wiedervorlage');
+});
+
+it('fragt eine Quelle gar nicht erst, die nicht verfuegbar ist', function () {
+    // Der autark-Riegel: Wer keinen Zugang zum CRM hat, hat keine CRM-Aufgaben
+    // — und das ist kein Fehlerzustand, den man meldet, sondern die richtige
+    // Antwort. „Nicht fragen" statt „hinterher ausblenden", weil die Frage ein
+    // Aufruf in ein anderes System ist.
+    $abgeschaltet = new class extends TaskSource
+    {
+        public bool $gefragt = false;
+
+        public function key(): string
+        {
+            return 'abgeschaltet';
+        }
+
+        public function label(): string
+        {
+            return 'Abgeschaltet';
+        }
+
+        public function isAvailable(): bool
+        {
+            return false;
+        }
+
+        public function tasks(int $userId): array
+        {
+            $this->gefragt = true;
+
+            return [];
+        }
+    };
+
+    $register = app(TaskSourceRegistry::class);
+    $register->register($abgeschaltet);
+
+    $register->collect(1);
+
+    expect($abgeschaltet->gefragt)->toBeFalse()
+        ->and($register->available())->not->toHaveKey('abgeschaltet');
 });

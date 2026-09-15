@@ -4,6 +4,8 @@ namespace Peppermint\Tasks;
 
 use Illuminate\Support\ServiceProvider;
 use InvalidArgumentException;
+use Peppermint\Tasks\Kinds\KindRegistry;
+use Peppermint\Tasks\Kinds\TaskKind;
 use Peppermint\Tasks\Priority\PriorityRegistry;
 use Peppermint\Tasks\Priority\TaskPriority;
 use Peppermint\Tasks\Sources\TaskSource;
@@ -32,6 +34,13 @@ class TasksServiceProvider extends ServiceProvider
             (array) $app['config']->get('tasks.priorities', []),
             TaskPriority::class,
             'priority',
+        ));
+
+        $this->app->singleton(KindRegistry::class, fn ($app) => $this->build(
+            new KindRegistry,
+            (array) $app['config']->get('tasks.kinds', []),
+            TaskKind::class,
+            'task kind',
         ));
 
         $this->app->singleton(FactorRegistry::class, fn ($app) => $this->build(

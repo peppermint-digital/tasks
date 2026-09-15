@@ -6,6 +6,9 @@ use BackedEnum;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Peppermint\Tasks\Exceptions\ForbiddenAttributeForKind;
+use Peppermint\Tasks\Kinds\KindRegistry;
+use Peppermint\Tasks\Kinds\TaskKind;
 use Peppermint\Tasks\Priority\PriorityRegistry;
 use Peppermint\Tasks\Priority\TaskPriority;
 use Peppermint\Tasks\Status\StatusRegistry;
@@ -32,6 +35,42 @@ class Task extends Model
     public function getTable(): string
     {
         return config('tasks.tables.tasks', 'tasks');
+    }
+
+    protected static function booted(): void
+    {
+        // The guard that keeps a kind from decaying into a label.
+        //
+        // On `saving` and not in a request rule, because the rule only holds
+        // for the path that carries it. The Manager stated "a routine cannot be
+        // completed" in two controllers; a third caller — the MCP tool — never
+        // learned about it. Stated here it holds for every writer, including
+        // the ones written next year.
+        static::saving(function (self $task) {
+            $kind = $task->kindDefinition();
+
+            if ($kind === null) {
+                return;
+            }
+
+            foreach ($kind->forbiddenAttributes() as $field) {
+                $column = static::column($field);
+
+                // Only a value that is actually being set counts. A column that
+                // is simply absent, or explicitly emptied, is not a violation —
+                // clearing a field the kind forbids is the correct move.
+                if ($task->getAttribute($column) !== null) {
+                    throw ForbiddenAttributeForKind::make($kind->key(), $field);
+                }
+            }
+
+            $erlaubt = $kind->statusKeys();
+            $status = static::scalar($task->field('status'));
+
+            if ($erlaubt !== null && $status !== null && ! in_array($status, $erlaubt, true)) {
+                throw ForbiddenAttributeForKind::make($kind->key(), 'status='.$status);
+            }
+        });
     }
 
     /**
@@ -70,6 +109,28 @@ class Task extends Model
         }
 
         $registry = app(StatusRegistry::class);
+
+        return $registry->has($key) ? $registry->get($key) : null;
+    }
+
+    /**
+     * The registered kind of this task — or null when the application has no
+     * kinds, or this row carries one nobody registered.
+     *
+     * Null rather than an exception, for the same reason as the status: a row
+     * whose kind fell out of the vocabulary must stay readable. A product that
+     * renames a kind and misses one row should see a task without a kind, not a
+     * page that cannot be opened.
+     */
+    public function kindDefinition(): ?TaskKind
+    {
+        $key = static::scalar($this->field('kind'));
+
+        if ($key === null) {
+            return null;
+        }
+
+        $registry = app(KindRegistry::class);
 
         return $registry->has($key) ? $registry->get($key) : null;
     }
@@ -124,7 +185,10 @@ class Task extends Model
      */
     public function restrictUrgencyTo(): ?array
     {
-        return null;
+        // The kind answers first, because the restriction is a statement about
+        // the sort of work, not about this one row. An application may still
+        // override this for something only the single task knows.
+        return $this->kindDefinition()?->restrictUrgencyTo();
     }
 
     public function urgency(): float

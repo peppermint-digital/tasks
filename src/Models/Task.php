@@ -214,6 +214,24 @@ class Task extends Model
         return $this->hasMany(static::class, static::column('parent_id'));
     }
 
+    /**
+     * Reminders someone set on this task — several, dismissible, with history.
+     *
+     * Deliberately separate from `due_date`: that says when the work must be
+     * done, this says when someone wants to be spoken to about it. See
+     * {@see TaskReminder}.
+     */
+    public function reminders(): HasMany
+    {
+        return $this->hasMany(TaskReminder::class, 'task_id');
+    }
+
+    /** Only the ones still waiting to be acted on. */
+    public function activeReminders(): HasMany
+    {
+        return $this->reminders()->where('is_dismissed', false);
+    }
+
     public function assignee(): BelongsTo
     {
         return $this->belongsTo(config('tasks.user_model'), static::column('assigned_to'));

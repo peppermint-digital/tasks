@@ -19,6 +19,11 @@ abstract class TestCase extends Orchestra
             'driver' => 'sqlite',
             'database' => ':memory:',
             'prefix' => '',
+            // SQLite erzwingt Fremdschluessel standardmaessig NICHT. Ohne das
+            // laeuft jede Pruefung auf `cascadeOnDelete` ins Leere und meldet
+            // gruen — waehrend MySQL im Produkt tatsaechlich kaskadiert. Ein
+            // Test, der den Unterschied nicht sehen kann, prueft hier nichts.
+            'foreign_key_constraints' => true,
         ]);
     }
 

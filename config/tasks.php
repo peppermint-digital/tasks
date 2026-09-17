@@ -122,6 +122,7 @@ return [
     */
     'tables' => [
         'tasks' => 'tasks',
+        'task_reminders' => 'task_reminders',
     ],
 
     /*
@@ -134,6 +135,7 @@ return [
     */
     'columns' => [
         'tasks' => [],
+        'task_reminders' => [],
     ],
 
     /*

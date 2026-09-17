@@ -187,3 +187,32 @@ it('laesst von Hand gesetzte Erinnerungen in Ruhe', function () {
     expect($eigene->fresh())->not->toBeNull()
         ->and($eigene->fresh()->title)->toBe('Selbst gesetzt');
 });
+
+it('gibt einer HEUTE faelligen Aufgabe auch nur EINE Zeile', function () {
+    // Gefunden erst im Livetest am 17.09.2026: Aufgabe #5203 war an dem Tag
+    // faellig und bekam BEIDE Zeilen — Vorlauf (16.09.) und Tag selbst
+    // (17.09.), beide in der Vergangenheit, beide im selben Durchgang.
+    //
+    // Die erste Regel lautete „kein Vorlauf, wenn die Frist vorbei ist". Am
+    // Faelligkeitstag ist sie das aber noch nicht — der Tag laeuft ja gerade.
+    // Es kommt nicht auf die Frist an, sondern darauf, ob die Meldung zum Tag
+    // selbst schon faellig ist.
+    mitFrist('2026-09-17');
+
+    $bilanz = (new DueDateReminders)->reconcile();
+
+    expect($bilanz['created'])->toBe(1)
+        ->and(TaskReminder::value('source'))->toBe('due:day');
+});
+
+it('behaelt den Vorlauf fuer die MORGEN faellige Aufgabe, auch wenn er schon vorbei ist', function () {
+    // Die Kehrseite: Um 09:00 ist die Vorwarnung von 08:00 vorbei — und
+    // „morgen faellig" ist trotzdem genau die Meldung, die jetzt hilft.
+    mitFrist('2026-09-18');
+
+    $bilanz = (new DueDateReminders)->reconcile();
+
+    expect($bilanz['created'])->toBe(2)
+        ->and(TaskReminder::where('source', 'due:lead')->value('remind_at')->utc()->lessThan(now()))
+        ->toBeTrue();
+});

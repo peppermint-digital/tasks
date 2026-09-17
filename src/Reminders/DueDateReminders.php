@@ -114,12 +114,25 @@ class DueDateReminders
 
         $momente = [self::SOURCE_DAY => $tag];
 
-        // Kein Vorlauf mehr, wenn die Frist selbst schon vorbei ist: „war
-        // morgen faellig" ueber eine seit Monaten offene Sache ist keine
-        // Erinnerung, sondern Rauschen — und die zweite Meldung im selben
-        // Durchgang ist die, nach der man wegsieht.
-        if ($vorlauf !== null && $frist->endOfDay()->utc()->greaterThanOrEqualTo(CarbonImmutable::now())) {
-            $momente[self::SOURCE_LEAD] = $tag->subDays((int) $vorlauf);
+        if ($vorlauf !== null) {
+            $vorwarnung = $tag->subDays((int) $vorlauf);
+
+            // Der Vorlauf faellt weg, sobald der Tag selbst schon dran ist.
+            //
+            // Dann sagt die Meldung zum Tag alles, was die Vorwarnung sagen
+            // wollte — und beide anzulegen hiesse ZWEI Benachrichtigungen im
+            // selben Durchgang fuer dieselbe Sache. Genau so lernt man, bei
+            // der Glocke wegzusehen.
+            //
+            // „Vorwarnung liegt in der Vergangenheit" allein reicht als
+            // Bedingung NICHT: Bei einer Aufgabe, die morgen faellig ist, ist
+            // sie das seit heute frueh — und die Meldung „morgen faellig" ist
+            // dann genau richtig.
+            $jetzt = CarbonImmutable::now();
+
+            if ($vorwarnung->greaterThan($jetzt) || $tag->greaterThan($jetzt)) {
+                $momente[self::SOURCE_LEAD] = $vorwarnung;
+            }
         }
 
         return $momente;

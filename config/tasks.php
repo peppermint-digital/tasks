@@ -140,6 +140,38 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Deadline reminders
+    |--------------------------------------------------------------------------
+    |
+    | A due date on its own tells nobody. These settings drive the daily
+    | reconciliation that turns a deadline into real reminder rows — the same
+    | rows a person sets by hand, delivered down the same path, dismissible in
+    | the same list.
+    |
+    | `enabled` is false by default ON PURPOSE. Switching it on starts sending
+    | notifications to real people; that is a product's decision, not a
+    | package's, and a package that opts a product in by being installed is a
+    | package that gets uninstalled.
+    */
+    'due_reminders' => [
+        'enabled' => false,
+
+        // How many days ahead the advance warning goes out. Null disables the
+        // advance warning and leaves only the one on the day itself.
+        'lead_days' => 1,
+
+        // Local wall-clock hour for both. Morning, because a reminder that
+        // arrives after the working day has started is a reminder about
+        // something already missed.
+        'hour' => 8,
+
+        // The zone that hour is meant in. The column stores UTC; without this
+        // "08:00" would arrive two hours late in summer.
+        'timezone' => 'Europe/Berlin',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Migrations
     |--------------------------------------------------------------------------
     |

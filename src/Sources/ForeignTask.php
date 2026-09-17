@@ -65,6 +65,24 @@ class ForeignTask
             // equivalence nobody checked.
             'kind' => $this->kind,
             'kind_label' => $this->kindLabel ?? $this->kind,
+
+            // The kind with its source in front — for filtering.
+            //
+            // `kind` alone is NOT unique across systems, and a merged list is
+            // exactly where that stops being harmless. Three systems call
+            // their default kind `vorgang`: this one, the project manager and
+            // the CRM. An aggregating list that keys its filter by `kind`
+            // collapses all three into one chip, keeps whichever label it saw
+            // first, and then claims a distinction it does not make.
+            //
+            // Same reasoning as the prefixed `id` two fields up, and the same
+            // fix. The ambiguity appears when things are merged, so it is
+            // resolved on the merging side — not by asking products to rename
+            // keys they own.
+            //
+            // `kind` itself stays untranslated and unprefixed: it is the other
+            // system's own word, and something has to still carry it.
+            'kind_key' => $this->kind === null ? null : $this->sourceKey.':'.$this->kind,
             'extra' => $this->extra,
             'external' => true,
         ];

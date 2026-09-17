@@ -130,3 +130,36 @@ it('fragt eine Quelle gar nicht erst, die nicht verfuegbar ist', function () {
     expect($abgeschaltet->gefragt)->toBeFalse()
         ->and($register->available())->not->toHaveKey('abgeschaltet');
 });
+
+it('stellt der fremden ART die Quelle voran', function () {
+    // Arten sind produkteigen und ihre Schluessel NICHT systemuebergreifend
+    // eindeutig: Brain, der Manager und das CRM nennen ihre Standard-Art alle
+    // drei `vorgang`. Eine zusammengefasste Liste, die ihren Filter nach `kind`
+    // schluesselt, laesst sie zu einem Chip kollabieren — dieselbe Verwechslung,
+    // gegen die die Kennung schon geschuetzt ist.
+    $aufgabe = new ForeignTask(sourceKey: 'crm', id: 1, title: 'X', kind: 'vorgang', kindLabel: 'CRM-Aufgabe');
+
+    $roh = $aufgabe->toArray();
+
+    expect($roh['kind_key'])->toBe('crm:vorgang')
+        // Das rohe Wort bleibt daneben stehen — es ist die Vokabel des anderen
+        // Systems, und irgendetwas muss sie noch tragen.
+        ->and($roh['kind'])->toBe('vorgang')
+        ->and($roh['kind_label'])->toBe('CRM-Aufgabe');
+});
+
+it('macht aus zwei gleichnamigen Arten zwei Schluessel', function () {
+    // Der Fall aus Bug #876 in einer Zeile.
+    $ausCrm = (new ForeignTask(sourceKey: 'crm', id: 1, title: 'X', kind: 'vorgang'))->toArray();
+    $ausManager = (new ForeignTask(sourceKey: 'manager', id: 1, title: 'X', kind: 'vorgang'))->toArray();
+
+    expect($ausCrm['kind_key'])->not->toBe($ausManager['kind_key']);
+});
+
+it('erfindet keinen Art-Schluessel, wenn das Produkt keine Art nennt', function () {
+    // Sonst stuende in der Filterleiste ein Chip „crm:" ohne Bedeutung.
+    $roh = (new ForeignTask(sourceKey: 'crm', id: 1, title: 'X'))->toArray();
+
+    expect($roh['kind_key'])->toBeNull()
+        ->and($roh['kind'])->toBeNull();
+});

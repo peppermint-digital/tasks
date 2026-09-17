@@ -186,13 +186,31 @@ class DueDateReminders
         $bilanz['moved_ids'][] = (int) $vorhanden->getKey();
     }
 
+    /**
+     * Was in der Meldung steht.
+     *
+     * „Frist heute" ueber einen Termin vom April ist schlicht falsch — und
+     * aufgefallen ist es erst in der Glocke, am echten Datensatz: Der Titel
+     * sah in jedem Test richtig aus, weil dort keine Frist monatealt war.
+     *
+     * Verglichen wird auf TAGES-Ebene, nicht mit dem Zeitpunkt der Meldung:
+     * Eine heute um 08:00 faellige Erinnerung, die um 14:41 zugestellt wird,
+     * ist nicht ueberfaellig — der Tag laeuft noch.
+     */
     private function wortlaut(Task $task, string $source): string
     {
-        $frist = CarbonImmutable::parse($task->field('due_date'))->format('d.m.Y');
+        $frist = CarbonImmutable::parse($task->field('due_date'));
+        $text = $frist->format('d.m.Y');
 
-        return $source === self::SOURCE_LEAD
-            ? "Frist naht: {$frist}"
-            : "Frist heute: {$frist}";
+        if ($source === self::SOURCE_LEAD) {
+            return "Frist naht: {$text}";
+        }
+
+        $zone = (string) config('tasks.due_reminders.timezone', 'Europe/Berlin');
+
+        return $frist->setTimezone($zone)->startOfDay()->lessThan(CarbonImmutable::now($zone)->startOfDay())
+            ? "Frist ueberfaellig: {$text}"
+            : "Frist heute: {$text}";
     }
 
     /**

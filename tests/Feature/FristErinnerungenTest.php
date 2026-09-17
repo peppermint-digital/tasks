@@ -216,3 +216,24 @@ it('behaelt den Vorlauf fuer die MORGEN faellige Aufgabe, auch wenn er schon vor
         ->and(TaskReminder::where('source', 'due:lead')->value('remind_at')->utc()->lessThan(now()))
         ->toBeTrue();
 });
+
+it('sagt „ueberfaellig", wenn die Frist wirklich vorbei ist', function () {
+    // In der Glocke stand am 17.09.2026: „Frist heute: 15.04.2026". Der Titel
+    // war in jedem Test richtig, weil dort keine Frist monatealt war —
+    // gesehen habe ich es erst an der zugestellten Meldung.
+    mitFrist('2026-04-15');
+
+    (new DueDateReminders)->reconcile();
+
+    expect(TaskReminder::value('title'))->toBe('Frist ueberfaellig: 15.04.2026');
+});
+
+it('sagt „heute" am Faelligkeitstag, auch wenn die Uhrzeit vorbei ist', function () {
+    // Verglichen wird auf Tages-Ebene. Eine um 08:00 faellige Erinnerung, die
+    // um 09:00 zugestellt wird, ist nicht ueberfaellig — der Tag laeuft noch.
+    mitFrist('2026-09-17');
+
+    (new DueDateReminders)->reconcile();
+
+    expect(TaskReminder::value('title'))->toBe('Frist heute: 17.09.2026');
+});

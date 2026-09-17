@@ -186,3 +186,89 @@ it('ist eine schreibbare Quelle weiterhin eine lesende', function () {
     expect(new ErfundeneSchreibquelle)->toBeInstanceOf(WritableTaskSource::class)
         ->and(new ErfundeneSchreibquelle)->toBeInstanceOf(TaskSource::class);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Faehigkeit und Recht sind zwei Fragen (v0.9.0)
+|--------------------------------------------------------------------------
+|
+| Die erste Fassung dieses Vertrags verlangte anlegen, aendern UND loeschen
+| zusammen — mit dem guten Argument des Kalenders: Getrennte RECHTE sind drei
+| Abfragen, und die dritte vergisst jemand.
+|
+| Am ersten Produkt, das nicht hineinpasste, zeigte sich der Fehler: Die
+| Verwaltung kann Tickets aendern und loeschen, aber nicht anlegen — ein Ticket
+| entsteht, weil jemand geschrieben hat. Unter der alten Fassung war sie damit
+| NIE beschreibbar, auch nicht fuers Abhaken.
+|
+| Das Argument des Kalenders war nicht falsch. Falsch war, dass `isWritable()`
+| zwei Aufgaben hatte: fragen, was das Produkt KANN (eine Tatsache, die je
+| Vorgang abweichen darf), und fragen, ob diese Person DARF (eine Regel, und da
+| bleibt es bei einem Schalter).
+*/
+
+it('laesst eine Quelle aendern, die nicht anlegen kann', function () {
+    // Der Fall Verwaltung, in einer Zeile.
+    $quelle = new class extends ErfundeneSchreibquelle
+    {
+        public function supports(string $operation): bool
+        {
+            return $operation !== WritableTaskSource::CREATE;
+        }
+    };
+
+    expect($quelle->allows(WritableTaskSource::CHANGE))->toBeTrue()
+        ->and($quelle->allows(WritableTaskSource::DELETE))->toBeTrue()
+        ->and($quelle->allows(WritableTaskSource::CREATE))->toBeFalse();
+});
+
+it('haelt eine Quelle ohne Schreibrecht aus JEDEM Vorgang heraus', function () {
+    // Das Recht schlaegt die Faehigkeit: Wer hier nicht schreiben darf, darf
+    // auch nichts davon, egal was das Produkt anbietet.
+    $quelle = new ErfundeneSchreibquelle(schreibbar: false);
+
+    foreach ([WritableTaskSource::CREATE, WritableTaskSource::CHANGE, WritableTaskSource::DELETE] as $vorgang) {
+        expect($quelle->allows($vorgang))->toBeFalse();
+    }
+});
+
+it('bietet eine Quelle ohne den Vorgang nicht zum Anlegen an', function () {
+    $register = new TaskSourceRegistry;
+
+    $register->register(new ErfundeneSchreibquelle('kann-alles'));
+    $register->register(new class('nur-aendern') extends ErfundeneSchreibquelle
+    {
+        public function supports(string $operation): bool
+        {
+            return $operation !== WritableTaskSource::CREATE;
+        }
+    });
+
+    expect(array_keys($register->writableFor(WritableTaskSource::CREATE)))->toBe(['kann-alles'])
+        // Zum Aendern sind es BEIDE — sonst waere die Verwaltung wieder
+        // draussen, und genau das war der Fehler.
+        ->and(array_keys($register->writableFor(WritableTaskSource::CHANGE)))
+        ->toBe(['kann-alles', 'nur-aendern'])
+        // Und `writable()` bleibt die weitere Frage: „darf hier ueberhaupt
+        // geschrieben werden".
+        ->and(array_keys($register->writable()))->toBe(['kann-alles', 'nur-aendern']);
+});
+
+it('bietet ohne Schreibrecht auch fuer einen einzelnen Vorgang nichts an', function () {
+    // `writableFor()` baut auf `writable()` auf — sonst umginge es das Recht.
+    $register = new TaskSourceRegistry;
+    $register->register(new ErfundeneSchreibquelle('gesperrt', schreibbar: false));
+
+    expect($register->writableFor(WritableTaskSource::CHANGE))->toBeEmpty();
+});
+
+it('bietet alles an, wer nichts einschraenkt', function () {
+    // Der Rueckfall muss halten: Eine vorhandene Quelle soll sich nicht
+    // aendern muessen. Die Erweiterung ist additiv.
+    $quelle = new ErfundeneSchreibquelle;
+
+    foreach ([WritableTaskSource::CREATE, WritableTaskSource::CHANGE, WritableTaskSource::DELETE] as $vorgang) {
+        expect($quelle->supports($vorgang))->toBeTrue()
+            ->and($quelle->allows($vorgang))->toBeTrue();
+    }
+});

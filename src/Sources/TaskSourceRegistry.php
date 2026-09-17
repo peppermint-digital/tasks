@@ -66,6 +66,29 @@ class TaskSourceRegistry
     }
 
     /**
+     * The sources you may perform THIS operation in.
+     *
+     * Narrower than `writable()`, and that is the point: a product can be
+     * writable and still not offer every operation. The Verwaltung is the case
+     * that made this necessary — a ticket can be ticked off and deleted, but
+     * not created from another system, because a ticket always has a concern
+     * behind it.
+     *
+     * `writable()` stays for the question „may this person write here at all",
+     * which is what a page asks before it shows any editing at all.
+     *
+     * @param  string  $operation  one of WritableTaskSource::CREATE, CHANGE, DELETE
+     * @return array<string, WritableTaskSource>
+     */
+    public function writableFor(string $operation): array
+    {
+        return array_filter(
+            $this->writable(),
+            fn (TaskSource $source) => $source instanceof WritableTaskSource && $source->supports($operation),
+        );
+    }
+
+    /**
      * Collects from every source, skipping the ones named in $skip.
      *
      * A source that is switched off is NOT ASKED, not merely hidden

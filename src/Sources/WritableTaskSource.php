@@ -28,6 +28,49 @@ use Peppermint\Tasks\Exceptions\ForeignSourceFailed;
  */
 abstract class WritableTaskSource extends TaskSource
 {
+    public const CREATE = 'create';
+
+    public const CHANGE = 'change';
+
+    public const DELETE = 'delete';
+
+    /**
+     * Does the OTHER SYSTEM offer this operation at all?
+     *
+     * ## Why this is separate from `isWritable()`, and why that is not a
+     * ## contradiction of the calendar
+     *
+     * The calendar argues for ONE switch instead of three, and the argument is
+     * good: separate RIGHTS are three checks, and somebody forgets the third.
+     *
+     * But this method does not ask about rights. It asks what the target system
+     * OFFERS — a fact about that product, not a decision about a person. And
+     * that fact legitimately varies per operation:
+     *
+     *   The Verwaltung's only task kind is a ticket, and
+     *   `TicketArt::isUserCreatable()` says false: a ticket exists because
+     *   somebody wrote in, always with a concern behind it. Creating one from
+     *   another application's "what would you like to create?" dialogue is a
+     *   question with no useful answer. Changing and deleting, on the other
+     *   hand, make perfect sense — ticking a ticket off from a merged list is
+     *   the most common wish there is.
+     *
+     * The first version of this contract (v0.8.0) demanded all three together.
+     * Under it the Verwaltung was never writable, not even for ticking off. The
+     * flaw was not the one-switch rule; it was that `isWritable()` had quietly
+     * taken on TWO jobs — asking the product what it can do, and asking whether
+     * this person may. Splitting along that seam keeps the calendar's rule
+     * where it belongs and lets the fact be a fact.
+     *
+     * A source that offers everything does not need to implement this.
+     *
+     * @param  string  $operation  one of CREATE, CHANGE, DELETE
+     */
+    public function supports(string $operation): bool
+    {
+        return true;
+    }
+
     /**
      * The task kinds of the other system, so a person can pick one instead of
      * guessing. Empty means: it names none, and the caller has to rely on the
@@ -95,5 +138,22 @@ abstract class WritableTaskSource extends TaskSource
     public function isWritable(): bool
     {
         return true;
+    }
+
+    /**
+     * May this person perform THIS operation here right now?
+     *
+     * Both questions at once, in the one place that knows they belong together:
+     * the person has to be allowed to write (`isWritable()`), and the target
+     * system has to offer the operation (`supports()`).
+     *
+     * An interface asks this and nothing else. That is what keeps the
+     * calendar's warning answered — whoever repeats the pair by hand at every
+     * control eventually gets one of them wrong, and the button that then
+     * appears fails only when somebody presses it.
+     */
+    public function allows(string $operation): bool
+    {
+        return $this->isWritable() && $this->supports($operation);
     }
 }

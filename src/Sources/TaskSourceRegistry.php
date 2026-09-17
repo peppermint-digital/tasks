@@ -44,6 +44,28 @@ class TaskSourceRegistry
     }
 
     /**
+     * The sources you may create in.
+     *
+     * An interface asks for this instead of checking itself — whoever repeats
+     * the check at every control eventually forgets it somewhere. And the check
+     * is two conditions, not one: the source has to BE writable (own class, no
+     * flag) and to say it may be written to right now (`isWritable()` — the
+     * capability can be gone, the person's rights can be withdrawn).
+     *
+     * Built on `available()`, not on `$sources`: a product nobody has access to
+     * is not offered for creating either.
+     *
+     * @return array<string, WritableTaskSource>
+     */
+    public function writable(): array
+    {
+        return array_filter(
+            $this->available(),
+            fn (TaskSource $source) => $source instanceof WritableTaskSource && $source->isWritable(),
+        );
+    }
+
+    /**
      * Collects from every source, skipping the ones named in $skip.
      *
      * A source that is switched off is NOT ASKED, not merely hidden

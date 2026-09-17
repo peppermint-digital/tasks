@@ -32,7 +32,6 @@ abstract class TaskSource
      */
     abstract public function tasks(int $userId): array;
 
-    /** Colour for the chip. Null means the application decides. */
     /**
      * Is this source usable at all right now?
      *
@@ -51,6 +50,7 @@ abstract class TaskSource
         return true;
     }
 
+    /** Colour for the chip. Null means the application decides. */
     public function colour(): ?string
     {
         return null;

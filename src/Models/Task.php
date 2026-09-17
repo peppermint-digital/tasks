@@ -220,16 +220,32 @@ class Task extends Model
      * Deliberately separate from `due_date`: that says when the work must be
      * done, this says when someone wants to be spoken to about it. See
      * {@see TaskReminder}.
+     *
+     * ## Why not simply `reminders()`
+     *
+     * It was, for half a day. `reminders` is a name products already use with
+     * their own meaning — the Peppermint CRM has carried a polymorphic one
+     * since 07/2025 that hangs off contacts and companies too, and computes
+     * its moment RELATIVE to the due date.
+     *
+     * A package that claims a common name AND pins its return type makes that
+     * impossible: overriding `reminders(): HasMany` with `MorphMany` is not a
+     * refinement, it is incompatible, and PHP aborts while LOADING the class —
+     * not at call time. The product is then locked out of the feature for a
+     * reason that has nothing to do with the feature.
+     *
+     * The package is the newcomer here. It takes the unambiguous name and
+     * leaves the common one to the products.
      */
-    public function reminders(): HasMany
+    public function taskReminders(): HasMany
     {
         return $this->hasMany(TaskReminder::class, 'task_id');
     }
 
     /** Only the ones still waiting to be acted on. */
-    public function activeReminders(): HasMany
+    public function activeTaskReminders(): HasMany
     {
-        return $this->reminders()->where('is_dismissed', false);
+        return $this->taskReminders()->where('is_dismissed', false);
     }
 
     public function assignee(): BelongsTo

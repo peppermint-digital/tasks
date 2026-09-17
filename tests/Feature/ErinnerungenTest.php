@@ -30,16 +30,16 @@ it('haengt mehrere Erinnerungen an dieselbe Aufgabe', function () {
     // frueher erinnert zu werden. Das waere eine Luege ueber den Termin.
     $task = aufgabe();
 
-    $task->reminders()->create(['user_id' => 1, 'remind_at' => now()->addDay(), 'title' => 'Freitag ansehen']);
-    $task->reminders()->create(['user_id' => 1, 'remind_at' => now()->addDays(3), 'title' => 'Vor dem Termin']);
+    $task->taskReminders()->create(['user_id' => 1, 'remind_at' => now()->addDay(), 'title' => 'Freitag ansehen']);
+    $task->taskReminders()->create(['user_id' => 1, 'remind_at' => now()->addDays(3), 'title' => 'Vor dem Termin']);
 
-    expect($task->reminders()->count())->toBe(2);
+    expect($task->taskReminders()->count())->toBe(2);
 });
 
 it('trennt faellig von noch nicht faellig', function () {
     $task = aufgabe();
-    $task->reminders()->create(['user_id' => 1, 'remind_at' => now()->subMinute()]);
-    $task->reminders()->create(['user_id' => 1, 'remind_at' => now()->addHour()]);
+    $task->taskReminders()->create(['user_id' => 1, 'remind_at' => now()->subMinute()]);
+    $task->taskReminders()->create(['user_id' => 1, 'remind_at' => now()->addHour()]);
 
     expect(TaskReminder::query()->due()->count())->toBe(1)
         ->and(TaskReminder::query()->upcoming()->count())->toBe(1);
@@ -51,12 +51,12 @@ it('behaelt abgehakte Erinnerungen als Verlauf', function () {
     // etwas offen" schneller zu beantworten und „woran haben wir schon
     // erinnert" gar nicht mehr.
     $task = aufgabe();
-    $e = $task->reminders()->create(['user_id' => 1, 'remind_at' => now()->subHour()]);
+    $e = $task->taskReminders()->create(['user_id' => 1, 'remind_at' => now()->subHour()]);
 
     $e->dismiss();
 
     expect(TaskReminder::query()->count())->toBe(1)
-        ->and($task->activeReminders()->count())->toBe(0)
+        ->and($task->activeTaskReminders()->count())->toBe(0)
         ->and($e->fresh()->dismissed_at)->not->toBeNull();
 });
 
@@ -64,7 +64,7 @@ it('verschiebt den Zeitpunkt beim zweiten Abhaken nicht', function () {
     // Sonst sagt der Verlauf, die Person haette spaeter gehandelt als sie es
     // tat — und genau dafuer wird er aufgehoben.
     $task = aufgabe();
-    $e = $task->reminders()->create(['user_id' => 1, 'remind_at' => now()->subHour()]);
+    $e = $task->taskReminders()->create(['user_id' => 1, 'remind_at' => now()->subHour()]);
 
     $e->dismiss();
     $zuerst = $e->fresh()->dismissed_at;
@@ -76,7 +76,7 @@ it('verschiebt den Zeitpunkt beim zweiten Abhaken nicht', function () {
 
 it('faellt mit der Aufgabe weg', function () {
     $task = aufgabe();
-    $task->reminders()->create(['user_id' => 1, 'remind_at' => now()]);
+    $task->taskReminders()->create(['user_id' => 1, 'remind_at' => now()]);
 
     $task->delete();
 
@@ -106,10 +106,10 @@ it('haengt am Tabellennamen des Produkts, nicht an „tasks"', function () {
     expect(Schema::hasTable('ticket_reminders'))->toBeTrue();
 
     $ticket = Task::create(['title' => 'Drucker klemmt', 'status' => 'offen']);
-    $ticket->reminders()->create(['user_id' => 7, 'remind_at' => now()]);
+    $ticket->taskReminders()->create(['user_id' => 7, 'remind_at' => now()]);
 
     expect((new TaskReminder)->getTable())->toBe('ticket_reminders')
-        ->and($ticket->reminders()->count())->toBe(1);
+        ->and($ticket->taskReminders()->count())->toBe(1);
 });
 
 it('legt die Tabelle nicht an, wenn das Produkt sie schon hat', function () {
@@ -123,4 +123,15 @@ it('legt die Tabelle nicht an, wenn das Produkt sie schon hat', function () {
 
     expect(Schema::hasTable('task_reminders'))->toBeTrue()
         ->and(Schema::getColumnListing('task_reminders'))->toBe($vorher);
+});
+
+it('beansprucht den Namen „reminders" NICHT', function () {
+    // Der Grund steht ausfuehrlich an `Task::taskReminders()`: Ein Produkt, das
+    // `reminders` mit eigener Bedeutung fuehrt — das CRM hat eine polymorphe
+    // seit 07/2025 —, kann sie nicht mit `MorphMany` ueberschreiben, wenn das
+    // Paket `HasMany` festlegt. PHP bricht dann beim LADEN der Klasse ab, und
+    // das Produkt ist von der Funktion ausgesperrt.
+    expect(method_exists(Task::class, 'reminders'))->toBeFalse(
+        'Das Paket darf den Namen nicht besetzen — er gehoert den Produkten.')
+        ->and(method_exists(Task::class, 'taskReminders'))->toBeTrue();
 });

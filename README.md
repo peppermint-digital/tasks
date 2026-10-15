@@ -108,6 +108,42 @@ cannot be installed by anyone who has none of those.
 scheduling." The core carries `subject_type` / `subject_id`, and that is all it
 knows about the subject.
 
+### Due dates in the calendar, without creating events
+
+A due date is not an appointment — it is a property of the task. Store an event
+for it and it exists twice: move the task and the event must follow, move the
+event and the task must follow, and one of those directions eventually gets
+forgotten.
+
+`TaskDeadlineSource` reads instead of storing:
+
+```php
+// config/calendar.php
+'sources' => [
+    new TaskDeadlineSource(
+        url: fn (Task $task) => route('tasks.show', $task),
+    ),
+],
+```
+
+The grid asks while paging, nothing is written, and a moved due date shows up on
+the right day immediately.
+
+This is the same mechanism the calendar uses for other systems' events — except
+nothing crosses the network here. `EventSource` asks for exactly three answers
+and none of them presumes another system.
+
+Two decisions worth knowing: deadlines are drawn **all-day**, because the
+package's own due-date logic compares whole days throughout
+(`DueDateReminders` works off `startOfDay()`) — drawing one at 14:37 would
+promise a precision that does not exist and would hide the appointments that
+really happen at that hour. And **only open tasks** appear: a completed task has
+no deadline, it has a date.
+
+Pass `scope` when "whose deadlines" is not simply "assigned to this user" — a
+tenant, a team, a project. Without that hook every application with a different
+rule would have to rebuild the source.
+
 ### What stays with the product
 
 **The key**, because it lives in the data (`calendar_events.kind`) and in users'

@@ -3,6 +3,7 @@
 use Carbon\CarbonImmutable;
 use Peppermint\Tasks\Calendar\TaskDeadlineSource;
 use Peppermint\Tasks\Models\Task;
+use Peppermint\Tasks\Tests\Fixtures\EigeneAufgabe;
 use Peppermint\Tasks\Tests\Support\Fertig;
 use Peppermint\Tasks\Tests\Support\Offen;
 
@@ -138,6 +139,34 @@ it('nimmt ein Sprungziel entgegen und laesst es sonst weg', function () {
     $mitZiel = new TaskDeadlineSource(url: fn (Task $a) => "/aufgaben/{$a->getKey()}");
 
     expect($mitZiel->events(7, $this->von, $this->bis)[0]->url)->toStartWith('/aufgaben/');
+});
+
+it('fragt das Aufgabenmodell DIESER Anwendung, nicht sein eigenes', function () {
+    // Jede Anwendung erbt vom Paketmodell und traegt eigene Felder. Ohne diese
+    // Angabe kaemen Paketmodelle aus der Abfrage, und ein `url`-Haken mit der
+    // eigenen Klasse in der Signatur bekaeme das falsche Objekt:
+    //
+    //     Argument #1 ($aufgabe) must be of type App\Models\Task,
+    //     Peppermint\Tasks\Models\Task given
+    //
+    // Genau so beim ersten Gegentest im Manager aufgetreten (15.10.2026).
+    Task::create([
+        'title' => 'Eigenes Modell',
+        'status' => 'offen',
+        'kind' => 'general',
+        'due_date' => '2026-11-10',
+        'assigned_to' => 7,
+    ]);
+
+    $quelle = new TaskDeadlineSource(
+        url: fn (EigeneAufgabe $a) => "/eigene/{$a->getKey()}",
+        model: EigeneAufgabe::class,
+    );
+
+    $eintraege = $quelle->events(7, $this->von, $this->bis);
+
+    expect($eintraege)->toHaveCount(1)
+        ->and($eintraege[0]->url)->toStartWith('/eigene/');
 });
 
 it('laesst die Anwendung die Auswahl selbst bestimmen', function () {

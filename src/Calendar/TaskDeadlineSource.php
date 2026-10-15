@@ -61,10 +61,25 @@ class TaskDeadlineSource extends EventSource
      * @param  (callable(\Illuminate\Database\Eloquent\Builder, int): void)|null  $scope
      *         Zusaetzliche Einschraenkung — etwa auf einen Mandanten. Ohne
      *         Angabe gilt: die Aufgaben, die dieser Person zugewiesen sind.
+     * @param  class-string<Task>  $model
+     *         Das Aufgabenmodell DIESER Anwendung.
+     *
+     *         Pflicht, sobald die Anwendung ein eigenes fuehrt — und das tun
+     *         alle: `App\Models\Task` erbt vom Paketmodell und traegt die
+     *         produkteigenen Felder. Ohne diese Angabe kaemen Paketmodelle aus
+     *         der Abfrage, und ein `url`-Haken mit der eigenen Klasse in der
+     *         Signatur bekaeme das falsche Objekt gereicht:
+     *
+     *             Argument #1 ($aufgabe) must be of type App\Models\Task,
+     *             Peppermint\Tasks\Models\Task given
+     *
+     *         Am 15.10.2026 beim ersten Gegentest im Manager aufgetreten.
+     *         Dasselbe Muster wie `TaskBlockKind::subjectModel()`.
      */
     public function __construct(
         private readonly mixed $url = null,
         private readonly mixed $scope = null,
+        private readonly string $model = Task::class,
         private readonly string $sourceKey = 'task-deadlines',
         private readonly string $sourceLabel = 'Fristen',
         private readonly ?string $colour = '#ef4444',
@@ -90,9 +105,12 @@ class TaskDeadlineSource extends EventSource
      */
     public function events(int $userId, DateTimeInterface $from, DateTimeInterface $to): array
     {
-        $spalte = Task::column('due_date');
+        /** @var class-string<Task> $modell */
+        $modell = $this->model;
 
-        $abfrage = Task::query()
+        $spalte = $modell::column('due_date');
+
+        $abfrage = $modell::query()
             ->open()
             ->whereNotNull($spalte)
             // Auf GANZE Tage geweitet: Eine Frist am 3.11. um 23:30 gehoert in

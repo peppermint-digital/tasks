@@ -122,6 +122,10 @@ forgotten.
 'sources' => [
     new TaskDeadlineSource(
         url: fn (Task $task) => route('tasks.show', $task),
+        // Your own model, not the package's — yours extends it and carries
+        // your fields. Leave this out and the query returns package models,
+        // and a `url` closure typed to your class gets handed the wrong one.
+        model: \App\Models\Task::class,
     ),
 ],
 ```

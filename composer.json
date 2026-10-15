@@ -16,10 +16,12 @@
     },
     "require-dev": {
         "orchestra/testbench": "^9.0|^10.0|^11.0",
-        "pestphp/pest": "^3.0|^4.0"
+        "pestphp/pest": "^3.0|^4.0",
+        "peppermint/calendar": "^0.41"
     },
     "suggest": {
-        "laravel/mcp": "For the package's base MCP tools. Optional — the package works without it."
+        "laravel/mcp": "For the package's base MCP tools. Optional — the package works without it.",
+        "peppermint/calendar": "For the calendar bridge: planned time blocks on a task (TaskBlockKind). Optional — the package works without it, tasks simply have no scheduling."
     },
     "autoload": {
         "psr-4": {
@@ -44,5 +46,11 @@
         }
     },
     "minimum-stability": "dev",
-    "prefer-stable": true
+    "prefer-stable": true,
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/peppermint-digital/calendar.git"
+        }
+    ]
 }

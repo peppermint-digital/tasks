@@ -77,6 +77,67 @@ This is not purity for its own sake. Wiring "scheduled" into the package would
 mean `peppermint/tasks` could not ship without `peppermint/calendar`, and a
 calendar could not ship without a task manager.
 
+## The calendar bridge
+
+A task has a due date and a planned timespan. The calendar is the instrument for
+setting and seeing them — so this package depends on **`peppermint/calendar`**,
+never the other way round.
+
+```php
+use Peppermint\Tasks\Calendar\TaskBlockKind;
+
+class ManagerTaskKind extends TaskBlockKind
+{
+    public function key(): string           { return 'manager_task'; }
+    public function profileModel(): ?string { return TimeBlockProfile::class; }
+}
+```
+
+Two answers, and the kind exists. `label()`, `subjectModel()` and the field name
+come from here; `subjectKey()` derives `task_id` from the model, so nothing
+restates it.
+
+### Why this direction, and not the other
+
+Point the arrow the other way and the calendar has to know what a task is. Then
+what a ticket is. Then what a deal is. That is the version of the calendar that
+cannot be installed by anyone who has none of those.
+
+`PlannedBlockKind` over there describes *something planned* and nothing more:
+"a task, a ticket, a deal: the event is not the thing itself, it is its
+scheduling." The core carries `subject_type` / `subject_id`, and that is all it
+knows about the subject.
+
+### What stays with the product
+
+**The key**, because it lives in the data (`calendar_events.kind`) and in users'
+saved filters. One shared key across systems would make a Manager block look
+like a local one inside the CRM.
+
+**The profile**, because the table is the product's.
+
+### What this replaced
+
+Measured on 15.10.2026, three systems had built nearly the same kind:
+
+| System | Class | Lines |
+|---|---|---|
+| Manager | `ManagerTaskKind` | 77 |
+| CRM | `AufgabenZeitblockArt` | 60 |
+| Verwaltung | `TicketZeitblockArt` | 68 |
+
+All of them declared `rules() => ['task_id' => 'required']` — restating what
+`subjectKey()` already derives.
+
+### The coupling is optional
+
+`suggest`, not `require`. Install this package without the calendar and you get
+tasks without scheduling; the bridge classes are never loaded, because
+autoloading is lazy.
+
+That is the same promise the calendar keeps: it runs without AI Brain and
+without the comm layer.
+
 ## Adopting an existing table
 
 A package that only runs on fresh tables cannot take on a grown product — and

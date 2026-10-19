@@ -133,6 +133,20 @@ return [
     | Package field name => actual column name. Lets a product keep its
     | years-old column names while the package speaks its own.
     */
+    /*
+    |--------------------------------------------------------------------------
+    | Inbox
+    |--------------------------------------------------------------------------
+    |
+    | Wohin ein Klick auf eine Aufgabe in der gemeinsamen Inbox fuehrt.
+    | `{id}` wird ersetzt; der Verweis wird mit `app.url` absolut gemacht,
+    | weil dieselbe Zeile in vier Oberflaechen steht.
+    |
+    */
+    'inbox' => [
+        'link' => '/tasks/{id}',
+    ],
+
     'columns' => [
         'tasks' => [],
         'task_reminders' => [],

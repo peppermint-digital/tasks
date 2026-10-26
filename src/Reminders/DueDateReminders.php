@@ -4,8 +4,11 @@ namespace Peppermint\Tasks\Reminders;
 
 use Carbon\CarbonImmutable;
 use Closure;
+use DateTimeInterface;
+use Illuminate\Database\Eloquent\Model;
+use Peppermint\Reminders\Abgleich\Abgleich;
+use Peppermint\Reminders\Abgleich\ErinnerungsAnlass;
 use Peppermint\Tasks\Models\Task;
-use Peppermint\Tasks\Models\TaskReminder;
 
 /**
  * Turns a due date into reminders somebody actually receives.
@@ -43,7 +46,7 @@ use Peppermint\Tasks\Models\TaskReminder;
  * learn to ignore a bell. A task whose deadline has passed gets exactly one
  * row.
  */
-class DueDateReminders
+class DueDateReminders implements ErinnerungsAnlass
 {
     /** The advance warning. */
     public const SOURCE_LEAD = 'due:lead';
@@ -62,49 +65,86 @@ class DueDateReminders
     /**
      * Bring the generated reminders in line with the deadlines.
      *
+     * ## Seit 26.10.2026 nur noch die Haelfte
+     *
+     * Das Anlegen, Verschieben, Abgehaktes-in-Ruhe-Lassen, Wegnehmen und
+     * Zaehlen macht {@see Abgleich} im Erinnerungs-Paket — einmal fuer alle
+     * Anlaesse. Diese Klasse beantwortet nur noch, WELCHE Aufgaben eine
+     * Erinnerung verdienen und WANN.
+     *
+     * Grund: Das Kalender-Paket hatte dieselben 240 Zeilen ein zweites Mal,
+     * verschieden war genau `momente()`. Pruefrage 3 des Paketvertrags.
+     *
+     * ## Die Bilanz behaelt ihre Form
+     *
+     * Absichtlich, und zwar wegen `moved_ids`: AI Brain fuehrt eine EIGENE
+     * Einmal-Sperre (ein Cache-Schluessel `erinnerung:gemeldet:{id}`, aelter
+     * als `delivered_at`) und vergisst sie anhand dieser Liste. Ohne sie
+     * feuert dort eine verschobene Erinnerung zum neuen Zeitpunkt NIE —
+     * lautlos, weil die Zeile richtig aussieht.
+     *
      * @return array{created: int, moved: int, removed: int, unaddressed: int, moved_ids: list<int>}
      */
     public function reconcile(): array
     {
-        $bilanz = ['created' => 0, 'moved' => 0, 'removed' => 0, 'unaddressed' => 0, 'moved_ids' => []];
+        $bilanz = (new Abgleich($this))->fahren();
 
-        $this->removeStaleRows($bilanz);
+        return [
+            'created' => $bilanz['angelegt'],
+            'moved' => $bilanz['verschoben'],
+            'removed' => $bilanz['weggenommen'],
+            'unaddressed' => count($bilanz['ohne_empfaenger']),
+            'moved_ids' => array_map('intval', $bilanz['verschobene_ids']),
+        ];
+    }
 
-        $tasks = Task::query()
+    /** @return array<int, string> */
+    public function quellen(): array
+    {
+        return [self::SOURCE_LEAD, self::SOURCE_DAY];
+    }
+
+    /**
+     * Die Aufgaben-Klasse des PRODUKTS, nicht die des Pakets.
+     *
+     * Daran haengt der Morph-Typ in `subject_type`. Mit der Paket-Klasse
+     * stuende dort ein Modell, das kein Produkt instanziiert — und nichts
+     * findet die Erinnerungen wieder.
+     *
+     * @return class-string<Task>
+     */
+    public function gegenstandsKlasse(): string
+    {
+        return (string) config('tasks.task_model', Task::class);
+    }
+
+    public function gegenstaende()
+    {
+        $klasse = $this->gegenstandsKlasse();
+
+        return $klasse::query()
             ->open()
-            ->whereNotNull(Task::column('due_date'))
-            ->with('taskReminders')
-            ->get();
+            ->whereNotNull($klasse::column('due_date'));
+    }
 
-        foreach ($tasks as $task) {
-            $empfaenger = $this->recipient !== null
-                ? ($this->recipient)($task)
-                : $task->field('assigned_to');
-
-            if ($empfaenger === null) {
-                // Counted, not silently skipped. A run that quietly does
-                // nothing reports success, and the gap only surfaces months
-                // later when someone wonders why they were never told.
-                $bilanz['unaddressed']++;
-
-                continue;
-            }
-
-            foreach ($this->momente($task) as $source => $zeitpunkt) {
-                $this->abgleichen($task, $source, $zeitpunkt, (int) $empfaenger, $bilanz);
-            }
+    public function empfaenger(Model $gegenstand): int|string|null
+    {
+        if ($this->recipient !== null) {
+            return ($this->recipient)($gegenstand);
         }
 
-        return $bilanz;
+        return $gegenstand->field('assigned_to');
     }
 
     /**
      * The moments this deadline deserves, in UTC.
      *
-     * @return array<string, CarbonImmutable>
+     * @return array<string, DateTimeInterface>
      */
-    private function momente(Task $task): array
+    public function momente(Model $gegenstand): array
     {
+        $task = $gegenstand;
+
         $zone = (string) config('tasks.due_reminders.timezone', 'Europe/Berlin');
         $stunde = (int) config('tasks.due_reminders.hour', 8);
         $vorlauf = config('tasks.due_reminders.lead_days', 1);
@@ -139,54 +179,6 @@ class DueDateReminders
     }
 
     /**
-     * @param  array{created: int, moved: int, removed: int, unaddressed: int, moved_ids: list<int>}  $bilanz
-     */
-    private function abgleichen(Task $task, string $source, CarbonImmutable $zeitpunkt, int $empfaenger, array &$bilanz): void
-    {
-        $vorhanden = $task->taskReminders->firstWhere('source', $source);
-
-        if ($vorhanden === null) {
-            $task->taskReminders()->create([
-                'user_id' => $empfaenger,
-                'remind_at' => $zeitpunkt,
-                'source' => $source,
-                'title' => $this->wortlaut($task, $source),
-            ]);
-
-            $bilanz['created']++;
-
-            return;
-        }
-
-        // Abgehaktes bleibt, wie es ist. Es ist der Nachweis, dass jemand
-        // erinnert wurde und gehandelt hat — daran nachtraeglich zu drehen
-        // hiesse, die Geschichte umzuschreiben.
-        if ($vorhanden->is_dismissed) {
-            return;
-        }
-
-        $verschoben = ! $vorhanden->remind_at->equalTo($zeitpunkt)
-            || (int) $vorhanden->user_id !== $empfaenger;
-
-        if (! $verschoben) {
-            return;
-        }
-
-        $vorhanden->update([
-            'remind_at' => $zeitpunkt,
-            'user_id' => $empfaenger,
-            'title' => $this->wortlaut($task, $source),
-        ]);
-
-        $bilanz['moved']++;
-
-        // Der Aufrufer muss die Zustell-Sperre fuer diese Zeile aufheben,
-        // sonst feuert die verschobene Erinnerung nie: Sie gilt als „schon
-        // gemeldet", obwohl sie zum neuen Zeitpunkt noch nichts gesagt hat.
-        $bilanz['moved_ids'][] = (int) $vorhanden->getKey();
-    }
-
-    /**
      * Was in der Meldung steht.
      *
      * „Frist heute" ueber einen Termin vom April ist schlicht falsch — und
@@ -197,8 +189,11 @@ class DueDateReminders
      * Eine heute um 08:00 faellige Erinnerung, die um 14:41 zugestellt wird,
      * ist nicht ueberfaellig — der Tag laeuft noch.
      */
-    private function wortlaut(Task $task, string $source): string
+    public function wortlaut(Model $gegenstand, string $quelle): string
     {
+        $task = $gegenstand;
+        $source = $quelle;
+
         $frist = CarbonImmutable::parse($task->field('due_date'));
         $text = $frist->format('d.m.Y');
 
@@ -213,26 +208,4 @@ class DueDateReminders
             : "Frist heute: {$text}";
     }
 
-    /**
-     * Erzeugte Zeilen wegraeumen, die nichts mehr zu sagen haben — die Frist
-     * ist weg oder die Aufgabe ist erledigt.
-     *
-     * Nur die noch offenen. Eine abgehakte bleibt stehen, auch wenn ihr Anlass
-     * entfallen ist: Der Verlauf soll zeigen, dass erinnert wurde.
-     *
-     * @param  array{created: int, moved: int, removed: int, unaddressed: int, moved_ids: list<int>}  $bilanz
-     */
-    private function removeStaleRows(array &$bilanz): void
-    {
-        $offen = Task::query()
-            ->open()
-            ->whereNotNull(Task::column('due_date'))
-            ->pluck((new Task)->getKeyName());
-
-        $bilanz['removed'] = TaskReminder::query()
-            ->whereIn('source', [self::SOURCE_LEAD, self::SOURCE_DAY])
-            ->where('is_dismissed', false)
-            ->whereNotIn('task_id', $offen)
-            ->delete();
-    }
 }

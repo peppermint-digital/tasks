@@ -81,6 +81,13 @@ class TaskReminder extends Reminder
      */
     protected static function booted(): void
     {
+        // ZUERST der Elternteil. Laravel ruft nur `static::booted()`, also
+        // ueberdeckt diese Methode die der Oberklasse — und die fuellt die
+        // alte Spalte mit, wenn ein Schreibweg nur den Gegenstand setzt. Ohne
+        // diesen Aufruf laeuft der gemeinsame Abgleich in die NOT-NULL-
+        // Bedingung von `task_id`, und zwar genau hier.
+        parent::booted();
+
         static::creating(function (self $erinnerung) {
             if ($erinnerung->task_id !== null && $erinnerung->subject_id === null) {
                 // Die Klasse des PRODUKTS, nicht die des Pakets — jedes

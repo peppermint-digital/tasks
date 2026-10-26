@@ -3,13 +3,18 @@
 namespace Peppermint\Tasks\Tests;
 
 use Orchestra\Testbench\TestCase as Orchestra;
+use Peppermint\Reminders\RemindersServiceProvider;
 use Peppermint\Tasks\TasksServiceProvider;
 
 abstract class TestCase extends Orchestra
 {
     protected function getPackageProviders($app): array
     {
-        return [TasksServiceProvider::class];
+        // Das Erinnerungs-Paket mit: So steht es auch im Produkt, und nur so
+        // laeuft seine Uebernahme-Migration, die `task_reminders` um den
+        // Gegenstand ergaenzt. Ohne sie testet man eine Tabelle, die es in
+        // keinem Produkt mehr gibt.
+        return [RemindersServiceProvider::class, TasksServiceProvider::class];
     }
 
     protected function defineEnvironment($app): void
@@ -30,5 +35,6 @@ abstract class TestCase extends Orchestra
     protected function defineDatabaseMigrations(): void
     {
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+        $this->loadMigrationsFrom(__DIR__.'/../vendor/peppermint/reminders/database/migrations');
     }
 }

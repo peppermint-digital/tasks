@@ -2,58 +2,67 @@
 
 namespace Peppermint\Tasks\Models;
 
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Peppermint\Reminders\Models\Reminder;
 
 /**
  * A reminder a person set for themselves on a task.
  *
- * ## Why this is not the due date
+ * ## Why this is now a subclass
  *
- * A due date says when the work must be finished. It belongs to the task and
- * there is exactly one. A reminder says when someone wants to be spoken to
- * about it — there can be several, they can be worded, and they are dismissed
- * rather than completed.
+ * Everything this class used to be — the store, the scopes the delivery runs,
+ * the history, the idempotent dismissal — says nothing about tasks. It said
+ * `task_id` and nothing else did.
  *
- * Conflating the two costs both: a due date moved to get an earlier nudge is a
- * lie about the deadline, and a single reminder cannot cover "look at this on
- * Friday, and again before the meeting".
+ * When appointments wanted the same thing (10/2026), the choice was a second
+ * table with a second delivery run, or one store with a subject reference.
+ * Two stores is the shape of the bug: the Peppermint CRM had a delivery that
+ * queried one of its two reminder tables, and the rows in the other reached
+ * nobody for weeks (Bug #880).
  *
- * ## Why dismissed rows stay
+ * So the store moved to `peppermint/reminders` and this is what stayed: the
+ * task's half of it. The product inherits, it does not copy — a copied model
+ * drifts from the first fix onwards.
  *
- * `is_dismissed` marks, it does not delete. The row is the record that someone
- * was reminded and acted — the history. Deleting it would answer "is anything
- * pending" faster and make "what did we already chase" unanswerable.
+ * ## Why the table name still comes from `tasks`
  *
- * ## Where it came from
+ * Four products are already running this table, and one of them does NOT call
+ * it `task_reminders`: the Peppermint Verwaltung maps it to `ticket_reminders`,
+ * because there the tickets ARE the tasks. Reading the name from the reminders
+ * package instead would point this model at a table that does not exist there.
  *
- * Built in the Peppermint Manager (12/2025) and never used there: table, UI
- * path and MCP tool existed, zero rows. When AI Brain needed the same thing on
- * 17.09.2026, the choice was a second implementation or one shared. Two
- * implementations of the same idea drift; this is the third product that would
- * have written it.
+ * The provider keeps the two configs in step — see
+ * {@see \Peppermint\Tasks\TasksServiceProvider::uebernimmTabellenname()}.
+ *
+ * ## What `task_id` is now
+ *
+ * Both are filled: `task_id` for the foreign key and its cascade, the subject
+ * pair for everything that does not care what it is reminding about. That is
+ * two references to one fact, which is a smell — and it is the deliberate
+ * price of a reversible migration. `task_id` keeps its values so the way back
+ * stays a config change; dropping it is a separate, later decision.
  */
-class TaskReminder extends Model
+class TaskReminder extends Reminder
 {
-    protected $guarded = [];
-
     /**
-     * The table, resolvable — same reason as {@see Task::getTable()}: a grown
-     * product keeps its own name instead of being renamed into the package.
+     * Resolvable, and from THIS package's config — see the note above about
+     * `ticket_reminders`.
      */
     public function getTable(): string
     {
-        return config('tasks.tables.task_reminders', 'task_reminders');
+        return (string) config('tasks.tables.task_reminders', 'task_reminders');
     }
 
-    protected function casts(): array
+    /**
+     * Likewise: a product that renamed columns did so in `tasks`, before this
+     * package existed. `Reminder` calls this as `static::`, so the override
+     * reaches its scopes.
+     */
+    public static function column(string $field): string
     {
-        return [
-            'remind_at' => 'datetime',
-            'is_dismissed' => 'boolean',
-            'dismissed_at' => 'datetime',
-        ];
+        $mapping = config('tasks.columns.task_reminders', []);
+
+        return is_array($mapping) ? (string) ($mapping[$field] ?? $field) : $field;
     }
 
     public function task(): BelongsTo
@@ -61,46 +70,28 @@ class TaskReminder extends Model
         return $this->belongsTo(Task::class, 'task_id');
     }
 
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(config('tasks.user_model'), 'user_id');
-    }
-
-    /** Not dismissed — still wants something from someone. */
-    public function scopeActive(Builder $query): Builder
-    {
-        return $query->where('is_dismissed', false);
-    }
-
-    /** Its moment has come or passed. */
-    public function scopeDue(Builder $query): Builder
-    {
-        return $query->where('remind_at', '<=', now());
-    }
-
-    /** Still ahead. */
-    public function scopeUpcoming(Builder $query): Builder
-    {
-        return $query->where('remind_at', '>', now());
-    }
-
-    public function scopeForUser(Builder $query, int $userId): Builder
-    {
-        return $query->where('user_id', $userId);
-    }
-
     /**
-     * Mark as dealt with.
+     * Keep the subject pair in step with `task_id`.
      *
-     * Idempotent on purpose: a second dismissal must not move the timestamp,
-     * or the history says the person acted later than they did.
+     * Without this, every reminder created the old way — and all four products
+     * create them the old way — would be invisible to anything that asks by
+     * subject, including the shared delivery. The row would look fine and
+     * reach nobody, which is the exact failure this extraction was meant to
+     * end.
      */
-    public function dismiss(): bool
+    protected static function booted(): void
     {
-        if ($this->is_dismissed) {
-            return false;
-        }
+        static::creating(function (self $erinnerung) {
+            if ($erinnerung->task_id !== null && $erinnerung->subject_id === null) {
+                // Die Klasse des PRODUKTS, nicht die des Pakets — jedes
+                // Produkt leitet Task ab. `getMorphClass()` liefert dabei den
+                // Morph-Alias, falls einer eingetragen ist, und genau der
+                // gehoert gespeichert.
+                $klasse = (string) config('tasks.task_model', Task::class);
 
-        return $this->update(['is_dismissed' => true, 'dismissed_at' => now()]);
+                $erinnerung->subject_type = (new $klasse)->getMorphClass();
+                $erinnerung->subject_id = $erinnerung->task_id;
+            }
+        });
     }
 }

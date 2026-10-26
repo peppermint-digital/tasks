@@ -1,5 +1,10 @@
 <?php
 
+use Peppermint\Reminders\Models\Reminder as PaketErinnerung;
+
+/** Steht fuer `App\Models\Task` — jedes Produkt leitet so ab. */
+class ProduktAufgabe extends Peppermint\Tasks\Models\Task {}
+
 use Illuminate\Support\Facades\Schema;
 use Peppermint\Tasks\Models\Task;
 use Peppermint\Tasks\Models\TaskReminder;
@@ -103,7 +108,16 @@ it('haengt am Tabellennamen des Produkts, nicht an „tasks"', function () {
     Schema::dropIfExists('ticket_reminders');
     (require __DIR__.'/../../database/migrations/2026_09_17_000000_create_task_reminders_table.php')->up();
 
-    expect(Schema::hasTable('ticket_reminders'))->toBeTrue();
+    // Und danach die Uebernahme des Erinnerungs-Pakets — so laeuft es im
+    // Produkt, wo beide Pakete ihre Migrationen stellen und die Reihenfolge
+    // ueber die Zeitstempel kommt. Ohne sie hat die Tabelle den Gegenstand
+    // nicht, und das Modell kann nicht hineinschreiben: Seit 10/2026 gehoert
+    // die Form dem Erinnerungs-Paket, nur der NAME kommt von hier.
+    config()->set('reminders.tables.reminders', 'ticket_reminders');
+    (require __DIR__.'/../../vendor/peppermint/reminders/database/migrations/2026_10_26_000100_upgrade_adopted_reminders_table.php')->up();
+
+    expect(Schema::hasTable('ticket_reminders'))->toBeTrue()
+        ->and(Schema::hasColumn('ticket_reminders', 'subject_type'))->toBeTrue();
 
     $ticket = Task::create(['title' => 'Drucker klemmt', 'status' => 'offen']);
     $ticket->taskReminders()->create(['user_id' => 7, 'remind_at' => now()]);
@@ -134,4 +148,53 @@ it('beansprucht den Namen „reminders" NICHT', function () {
     expect(method_exists(Task::class, 'reminders'))->toBeFalse(
         'Das Paket darf den Namen nicht besetzen — er gehoert den Produkten.')
         ->and(method_exists(Task::class, 'taskReminders'))->toBeTrue();
+});
+
+it('schreibt den Gegenstand beim Anlegen mit', function () {
+    // Seit 10/2026 liegt der Speicher in peppermint/reminders und fragt nach
+    // dem GEGENSTAND, nicht nach einer Aufgabe. Alle vier Produkte legen
+    // Erinnerungen aber weiter ueber `task_id` an. Ohne diese Mitschrift waere
+    // jede davon fuer den geteilten Zustell-Lauf unsichtbar — die Zeile sieht
+    // heil aus und erreicht niemanden, genau der Fehler, den die Trennung
+    // beenden sollte.
+    $aufgabe = Task::create(['title' => 'Angebot schicken', 'status' => 'offen']);
+
+    $erinnerung = $aufgabe->taskReminders()->create(['user_id' => 7, 'remind_at' => now()]);
+
+    expect($erinnerung->subject_type)->toBe((new Task)->getMorphClass())
+        ->and((int) $erinnerung->subject_id)->toBe($aufgabe->getKey())
+        ->and((int) $erinnerung->task_id)->toBe($aufgabe->getKey());
+});
+
+it('nimmt die Gegenstandsklasse des PRODUKTS, nicht die des Pakets', function () {
+    // Jedes Produkt leitet Task ab. Stuende hier die Paket-Klasse, wuerde
+    // `forSubject($eigeneAufgabe)` nie treffen — und in AI Brain, das eine
+    // Morph-Map erzwingt, fliegt ein nicht eingetragener Typ sogar.
+    config()->set('tasks.task_model', ProduktAufgabe::class);
+
+    $aufgabe = Task::create(['title' => 'Angebot', 'status' => 'offen']);
+    $erinnerung = $aufgabe->taskReminders()->create(['user_id' => 7, 'remind_at' => now()]);
+
+    expect($erinnerung->subject_type)->toBe(ProduktAufgabe::class);
+});
+
+it('findet die Erinnerung ueber den Gegenstand wieder', function () {
+    $aufgabe = Task::create(['title' => 'Angebot', 'status' => 'offen']);
+    $aufgabe->taskReminders()->create(['user_id' => 7, 'remind_at' => now()]);
+
+    expect(PaketErinnerung::query()->forSubject($aufgabe)->count())->toBe(1);
+});
+
+it('laesst einen bereits gesetzten Gegenstand in Ruhe', function () {
+    $aufgabe = Task::create(['title' => 'Angebot', 'status' => 'offen']);
+
+    $erinnerung = $aufgabe->taskReminders()->create([
+        'user_id' => 7,
+        'remind_at' => now(),
+        'subject_type' => 'Etwas\\Anderes',
+        'subject_id' => 99,
+    ]);
+
+    expect($erinnerung->subject_type)->toBe('Etwas\\Anderes')
+        ->and((int) $erinnerung->subject_id)->toBe(99);
 });

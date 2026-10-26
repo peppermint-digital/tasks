@@ -1,5 +1,6 @@
 <?php
 
+use Peppermint\Tasks\Models\Task;
 use Peppermint\Tasks\Urgency\Factors\AgeFactor;
 use Peppermint\Tasks\Urgency\Factors\DueDateFactor;
 use Peppermint\Tasks\Urgency\Factors\PriorityFactor;
@@ -14,6 +15,26 @@ return [
     | The package has no user management of its own — it only holds a reference.
     */
     'user_model' => env('TASKS_USER_MODEL', 'App\\Models\\User'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Task model
+    |--------------------------------------------------------------------------
+    |
+    | The application's own task class — every product subclasses the
+    | package's. Needed since reminders moved to `peppermint/reminders`
+    | (10/2026): a reminder stores WHAT it is about as a morph type, and that
+    | type has to be the class the product actually uses. Left at the package
+    | class, `subject_type` would name a model no product instantiates, and
+    | `forSubject($task)` would never match.
+    |
+    | ⚠️ A product that subclasses Task MUST set this. There is no way for the
+    | package to detect it: a wrong value is silently wrong in a product
+    | without a morph map, and throws in one with `Relation::enforceMorphMap`
+    | (AI Brain does). If a morph map is enforced, the alias belongs in it too
+    | — `getMorphClass()` then returns the alias, which is what gets stored.
+    */
+    'task_model' => Task::class,
 
     /*
     |--------------------------------------------------------------------------

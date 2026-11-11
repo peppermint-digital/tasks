@@ -646,7 +646,7 @@ improve it in one product and the others keep the old one, silently, because
 nothing breaks.
 
 ```bash
-npm install github:peppermint-digital/tasks#v0.4.0
+npm install github:peppermint-digital/tasks#v0.13.0
 ```
 
 ```tsx

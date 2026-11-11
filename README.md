@@ -636,3 +636,47 @@ The product extends the model, it does not copy it:
 ```php
 class Task extends \Peppermint\Tasks\Models\Task { /* own relations */ }
 ```
+
+## The JS side
+
+Until 11.11.2026 this package was PHP only. The card that shows another
+system's tasks on a record then existed twice — identical, in two products —
+and the third product would have made it three. From there such a thing drifts:
+improve it in one product and the others keep the old one, silently, because
+nothing breaks.
+
+```bash
+npm install github:peppermint-digital/tasks#v0.4.0
+```
+
+```tsx
+import { FremdeVorgaenge } from '@peppermint-digital/tasks/inertia';
+
+<FremdeVorgaenge
+    eigenschaft="fremdeVorgaenge"          // the deferred Inertia prop
+    daten={fremdeVorgaenge}
+    beschreibung="Was im CRM und im Manager zu diesem Auftrag liegt"
+    leer="In den anderen Systemen liegt nichts zu diesem Auftrag."
+/>
+```
+
+The server side fills that prop from `TaskSourceRegistry::collectForSubject()`
+— tasks, failures and the source list, so the card can name the system that is
+missing instead of printing an empty list.
+
+### Two entry points
+
+`.` is free of Inertia; `./inertia` needs it, because `Deferred` comes from
+`@inertiajs/react`. Same split as the mailbox package, and for the same reason:
+a product without Inertia should still be able to install this.
+
+React, react-dom and Inertia stay with the **product** (`external` in tsup, peer
+dependencies here). Two React instances in one tree end in "Invalid hook call",
+and nobody finds that quickly.
+
+### The UI primitives are copies, on purpose
+
+`src/ui/badge.tsx` and `src/ui/card.tsx` are the same shadcn primitives the
+products carry. A package that reached into the host's `@/components/ui` would
+break the moment a product renamed a file — and it cannot, because the host
+alias does not exist at build time.

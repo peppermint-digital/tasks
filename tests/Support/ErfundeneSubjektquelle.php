@@ -25,6 +25,7 @@ class ErfundeneSubjektquelle extends TaskSource
         private array $nachSubjekt = [],
         private ?ForeignSourceFailed $faellt = null,
         private bool $verfuegbar = true,
+        private bool $beantwortetPersonen = true,
     ) {}
 
     public function key(): string
@@ -50,6 +51,22 @@ class ErfundeneSubjektquelle extends TaskSource
     public function supportsSubjects(): bool
     {
         return true;
+    }
+
+    /**
+     * Vorgabe `true`, weil eine Quelle beides koennen DARF — und weil die
+     * bestehenden Tests von einer Attrappe ausgehen, die auch als
+     * Personen-Quelle gilt.
+     *
+     * Abwaehlbar, weil die echte Brueckenquelle `false` sagt: Sie beantwortet
+     * nur die Datensatz-Frage. Genau dieser Fall muss pruefbar sein, denn an
+     * ihm haengt, dass `collect()` ueber `forPersons()` laeuft und nicht ueber
+     * `available()` — sonst geht ein Aufruf ueber die Systemgrenze fuer eine
+     * Frage hinaus, die die Quelle gar nicht haelt.
+     */
+    public function supportsPerson(): bool
+    {
+        return $this->beantwortetPersonen;
     }
 
     public function tasksForSubject(string $type, string|int $id): array

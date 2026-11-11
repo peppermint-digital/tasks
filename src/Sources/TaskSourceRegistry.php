@@ -131,17 +131,21 @@ class TaskSourceRegistry
      * order and asks "what else belongs to this?". Three entries where there
      * should be five looks exactly like a complete answer — there is nothing
      * on the page to notice. So the failure is not logged away, it is returned
-     * (see {@see SubjectTasks}), and the interface says which system is
-     * missing.
+     * (see {@see TaskHarvest}), and the interface says which system is missing.
      *
      * Still not thrown: the other sources keep showing, and the page works.
+     *
+     * Answers in the same shape as {@see harvest()} — same class, same three
+     * fields. A page that shows a record's tasks next to a person's reads one
+     * form, not two, and the caveat line is built the same way on both halves.
      *
      * @param  string  $type  the other system's word for its own record
      * @param  array<int, string>  $skip  sources the person switched off
      */
-    public function collectForSubject(string $type, string|int $id, array $skip = []): SubjectTasks
+    public function collectForSubject(string $type, string|int $id, array $skip = []): TaskHarvest
     {
         $tasks = [];
+        $ok = [];
         $failures = [];
 
         foreach ($this->forSubjects() as $key => $source) {
@@ -155,23 +159,29 @@ class TaskSourceRegistry
                 foreach ($source->tasksForSubject($type, $id) as $task) {
                     $tasks[] = $task;
                 }
-            } catch (ForeignSourceFailed $e) {
-                $failures[$key] = new SubjectSourceFailure($key, $e->getMessage(), $e->errorClass);
-            } catch (Throwable $e) {
-                // Anything else is a defect on our side, not an outage over
-                // there — it still must not blank the page, and it still must
-                // not pass as "nothing found".
-                Log::warning('tasks.subject_source_failed', [
-                    'source' => $key,
-                    'subject_type' => $type,
-                    'message' => $e->getMessage(),
-                ]);
 
-                $failures[$key] = new SubjectSourceFailure($key, $e->getMessage());
+                // Also noted when it brought nothing, and here the reason is
+                // sharper than for a person: "this order has no CRM tasks" is
+                // an answer somebody acts on, and it must not look like "the
+                // CRM was never asked".
+                $ok[] = $key;
+            } catch (Throwable $e) {
+                if (! $e instanceof ForeignSourceFailed) {
+                    // Anything else is a defect on our side, not an outage over
+                    // there — it still must not blank the page, and it still
+                    // must not pass as "nothing found".
+                    Log::warning('tasks.subject_source_failed', [
+                        'source' => $key,
+                        'subject_type' => $type,
+                        'message' => $e->getMessage(),
+                    ]);
+                }
+
+                $failures[$key] = $this->failureFrom($key, $e);
             }
         }
 
-        return new SubjectTasks($tasks, $failures);
+        return new TaskHarvest($tasks, $ok, $failures);
     }
 
     /**
@@ -232,7 +242,7 @@ class TaskSourceRegistry
     {
         $tasks = [];
         $ok = [];
-        $failed = [];
+        $failures = [];
 
         // `forPersons()`, not `available()`: a subject-only source would be
         // asked and would answer nothing, which costs a call across a system
@@ -261,13 +271,33 @@ class TaskSourceRegistry
                     'message' => $e->getMessage(),
                 ]);
 
-                // The other end's reason, passed through: "Verwaltung nicht
-                // erreichbar: timeout" tells somebody what to do next,
-                // "Fehler" does not.
-                $failed[$key] = $e->getMessage();
+                $failures[$key] = $this->failureFrom($key, $e);
             }
         }
 
-        return new TaskHarvest($tasks, $ok, $failed);
+        return new TaskHarvest($tasks, $ok, $failures);
+    }
+
+    /**
+     * A throw from a source, turned into the answer's failure entry.
+     *
+     * One place for both queries, because the reading is the same one twice:
+     * the MESSAGE is the other end's own words, passed through — "Verwaltung
+     * nicht erreichbar: timeout" tells somebody what to do next, "Fehler" does
+     * not — and the REASON is the comm layer's class, when the source knew one.
+     *
+     * A plain throw carries no class, and that stays null rather than being
+     * guessed at: a source that cannot tell "not allowed" from "not reachable"
+     * must not have one of them invented for it here. Guessing would be the
+     * expensive kind of wrong, because the interface acts on the reason — it
+     * offers a reload for one and tells somebody to ask for access for another.
+     */
+    protected function failureFrom(string $key, Throwable $e): SourceFailure
+    {
+        return new SourceFailure(
+            $key,
+            $e->getMessage(),
+            $e instanceof ForeignSourceFailed ? $e->errorClass : null,
+        );
     }
 }

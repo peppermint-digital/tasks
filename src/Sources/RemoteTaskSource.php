@@ -2,7 +2,7 @@
 
 namespace Peppermint\Tasks\Sources;
 
-use RuntimeException;
+use Peppermint\Tasks\Exceptions\ForeignSourceFailed;
 
 /**
  * Another system's tasks — shown, never taken over.
@@ -30,11 +30,18 @@ use RuntimeException;
  *
  * ## Reading stays quiet — but not silent
  *
- * An outage while reading throws a `RuntimeException`; the registry logs it and
- * leaves the source out, so the rest of the list stays visible. That is right
- * for a page that draws a list and wrong for a form, which is why
+ * An outage while reading throws {@see ForeignSourceFailed}; the registry logs
+ * it and leaves the source out, so the rest of the list stays visible. That is
+ * right for a page that draws a list and wrong for a form, which is why
  * {@see TaskSourceRegistry::harvest()} catches the same throw and puts the
  * reason in its answer. Same mechanics, two readings — the caller picks.
+ *
+ * The throw carries the comm layer's failure CLASS and not only a sentence.
+ * Until 11.11.2026 this was a bare `RuntimeException`, which threw away the
+ * one field `RemoteResult` already had — `error`, naming which of the four
+ * situations it was. The mask that is supposed to tell "no permission" from
+ * "not reachable" then had a sentence to parse, and parsing sentences is how
+ * the distinction gets lost again on the first rewording.
  *
  * ## Read-only, deliberately, in this round
  *
@@ -146,7 +153,20 @@ class RemoteTaskSource extends TaskSource
             // An outage is not an empty result. The registry treats the throw
             // as an outage: logged and left out by `collect()`, named in the
             // answer by `harvest()`.
-            throw new RuntimeException($this->label().' nicht erreichbar: '.$result->message);
+            //
+            // Thrown with the message AND the class, not one of the two. The
+            // message is what a person reads and it is the other end's own
+            // wording; the class is what the interface branches on. Composed
+            // here rather than through `ForeignSourceFailed::during()`, whose
+            // generic sentence would replace the only line that says WHAT
+            // happened over there.
+            throw new ForeignSourceFailed(
+                $this->label().' nicht erreichbar: '.$result->message,
+                $this->key(),
+                'tasks',
+                null,
+                $result->error,
+            );
         }
 
         $tasks = [];

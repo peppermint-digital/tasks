@@ -3,6 +3,7 @@
 use Peppermint\Tasks\Sources\CallableRemoteTaskSystem;
 use Peppermint\Tasks\Sources\RemoteResult;
 use Peppermint\Tasks\Sources\RemoteTaskSource;
+use Peppermint\Tasks\Sources\SourceFailure;
 use Peppermint\Tasks\Sources\TaskSourceRegistry;
 use Peppermint\Tasks\Tests\Support\ErfundeneQuelle;
 use Peppermint\Tasks\Tests\Support\ErfundenesSystem;
@@ -85,10 +86,19 @@ it('unterscheidet ein nicht erreichbares System von einem ohne Aufgaben', functi
 
     expect($ernte->tasks)->toBeEmpty()
         ->and($ernte->ok)->toBe(['leer'])
-        ->and($ernte->failed)->toHaveKey('kaputt')
-        // Der Grund der Gegenstelle reist mit: „nicht erreichbar:
+        ->and($ernte->failures)->toHaveKey('kaputt')
+        // Der Text der Gegenstelle reist mit: „nicht erreichbar:
         // Zeitueberschreitung" sagt jemandem, was zu tun ist, „Fehler" nicht.
-        ->and($ernte->failed['kaputt'])->toContain('Zeitueberschreitung')
+        ->and($ernte->failures['kaputt']->message)->toContain('Zeitueberschreitung')
+        // Und seit der Zusammenlegung (#9809) auch der GRUND, typisiert. Das
+        // konnte keine der beiden Fassungen allein: Die Personen-Seite hatte
+        // nur den Text, und `RemoteResult` kannte die Klasse bereits — sie fiel
+        // im Wurf auf dem Weg nach oben weg. Eine Maske, die „keine Freigabe"
+        // von „nicht erreichbar" unterscheiden soll, haette sonst den Satz
+        // zerlegen muessen, und eine Umformulierung drueben kostet sie die
+        // Unterscheidung wieder.
+        ->and($ernte->failures['kaputt']->reason)->toBe(SourceFailure::UNREACHABLE)
+        ->and($ernte->failures['kaputt']->mightPassByItself())->toBeTrue()
         ->and($ernte->complete())->toBeFalse()
         ->and($ernte->empty())->toBeFalse('Leer UND vollstaendig waere die Luege.');
 });
@@ -120,7 +130,11 @@ it('laesst eine unerreichbare Quelle die Liste nicht mitreissen', function () {
 
     expect($ernte->tasks)->toHaveCount(1)
         ->and($ernte->tasks[0]->title)->toBe('Kommt durch')
-        ->and(array_keys($ernte->failed))->toBe(['kaputt']);
+        ->and(array_keys($ernte->failures))->toBe(['kaputt'])
+        // Ohne Fehlerklasse von drueben bleibt der Grund leer, statt geraten
+        // zu werden: Wer hier `unreachable` einsetzte, versprach der Maske
+        // eine Unterscheidung, die niemand getroffen hat.
+        ->and($ernte->failures['kaputt']->reason)->toBeNull();
 });
 
 it('laesst collect() unveraendert, obwohl es jetzt harvest() fragt', function () {
@@ -353,7 +367,13 @@ it('macht aus einem kaputten Aufrufweg einen Fehlschlag und keinen Absturz', fun
     $ernte = $register->harvest(1);
 
     expect($ernte->tasks)->toBeEmpty()
-        ->and($ernte->failed)->toHaveKey('murks');
+        ->and($ernte->failures)->toHaveKey('murks')
+        // Und der Grund, den `CallableRemoteTaskSystem` dafuer gesetzt hat,
+        // kommt oben an: `tool_failed`. Das ist der ganze Weg der
+        // Zusammenlegung an einem Stueck — Grund im Aufrufweg gesetzt, als
+        // Wurf durch die Quelle getragen, in der Ernte typisiert hinterlegt.
+        // Vor dem 11.11.2026 blieb davon nur ein Satz uebrig.
+        ->and($ernte->failures['murks']->reason)->toBe(SourceFailure::TOOL_FAILED);
 });
 
 it('nimmt die Fehlerklasse der Gegenstelle auf, auch ohne Text', function () {

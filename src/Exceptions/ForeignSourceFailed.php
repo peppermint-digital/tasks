@@ -34,7 +34,8 @@ final class ForeignSourceFailed extends RuntimeException
      *                                   what an interface needs to say something actionable,
      *                                   but a source that cannot tell them apart must still
      *                                   be able to report a failure.
-     *                                   See {@see \Peppermint\Tasks\Sources\SubjectSourceFailure}.
+     *                                   See {@see \Peppermint\Tasks\Sources\SourceFailure}, which holds the four
+     *                                   names and is what an answer carries them in.
      */
     public function __construct(
         string $message,

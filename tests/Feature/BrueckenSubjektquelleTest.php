@@ -7,7 +7,7 @@ use Peppermint\AiBrainBridge\Facades\AiBrain;
 use Peppermint\AiBrainBridge\Verbund\Bruecke;
 use Peppermint\Tasks\Sources\BrueckenSubjektquelle;
 use Peppermint\Tasks\Sources\BrueckenSubjektquellen;
-use Peppermint\Tasks\Sources\SubjectSourceFailure;
+use Peppermint\Tasks\Sources\SourceFailure;
 use Peppermint\Tasks\Sources\TaskSourceRegistry;
 use Peppermint\Tasks\Tests\Support\ErfundeneQuelle;
 use Peppermint\Tasks\Tests\Support\Person;
@@ -179,7 +179,7 @@ it('reicht die Fehlerklasse des Komm-Layers durch, statt eine leere Liste zu lie
 
     AiBrain::shouldReceive('gateway')->andReturn([
         'ok' => false,
-        'error' => SubjectSourceFailure::NOT_ALLOWED,
+        'error' => SourceFailure::NOT_ALLOWED,
         'message' => 'Für „tasks.subject.list" ist dieses System nicht freigeschaltet.',
     ]);
 
@@ -192,8 +192,16 @@ it('reicht die Fehlerklasse des Komm-Layers durch, statt eine leere Liste zu lie
 
     $antwort = $register->collectForSubject('auftrag', 7);
 
-    expect($antwort->isIncomplete())->toBeTrue()
-        ->and($antwort->failures['crm']->errorClass)->toBe('not_allowed');
+    // `complete()` statt des frueheren `isIncomplete()`: seit der
+    // Zusammenlegung (#9809) antwortet `collectForSubject()` in derselben Form
+    // wie `harvest()`, und zwei Namen fuer eine Frage pflegt irgendwann
+    // niemand mehr beide.
+    expect($antwort->complete())->toBeFalse()
+        ->and($antwort->failures['crm']->reason)->toBe('not_allowed')
+        // „Nicht freigeschaltet" ist nichts, was Warten behebt — und genau
+        // deshalb steht der Grund typisiert in der Antwort: Die Maske darf
+        // hier kein „neu laden" anbieten.
+        ->and($antwort->failures['crm']->mightPassByItself())->toBeFalse();
 });
 
 it('lässt eine Zeile ohne id draussen, statt eine Aufgabe ohne Kennung zu bauen', function () {

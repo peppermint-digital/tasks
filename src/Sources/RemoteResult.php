@@ -71,12 +71,33 @@ class RemoteResult
      * of failure must not produce an error message without text — "not
      * reachable: " is worse than "not reachable: unreachable".
      *
+     * ## `ok` is read STRICTLY, and that is not a style question
+     *
+     * Only a real `true` counts. This was `(bool) ($answer['ok'] ?? false)`
+     * until 11.11.2026, and the case that reading gets wrong is this one:
+     *
+     *     ['ok' => 'false', 'data' => null]   // (bool) 'false' === true
+     *
+     * A system answering that way is read as a SUCCESS. `data` is then no
+     * list, `rows()` is empty, and what comes out is an empty task list that
+     * presents itself as a complete answer — "no open tasks" for a system
+     * that has some, with nothing on the page to notice. That is the exact
+     * failure this whole package is built against, produced by the one line
+     * that was supposed to prevent it.
+     *
+     * The same holds for `1`, `'1'`, `'yes'` and every other truthy thing that
+     * is not a bool: all of them are a MALFORMED answer, and a malformed
+     * answer is not a success. Failing closed costs an error message where a
+     * system misbehaves; failing open costs a wrong answer nobody sees.
+     *
+     * Whoever wants to loosen this again has to want that empty list.
+     *
      * @param  array<string, mixed>  $answer
      */
     public static function fromArray(array $answer): self
     {
         return new self(
-            ok: (bool) ($answer['ok'] ?? false),
+            ok: ($answer['ok'] ?? null) === true,
             data: is_array($answer['data'] ?? null) ? $answer['data'] : null,
             message: $answer['message'] ?? $answer['error'] ?? null,
             error: $answer['error'] ?? null,

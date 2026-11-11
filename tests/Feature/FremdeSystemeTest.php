@@ -427,6 +427,48 @@ it('nimmt die Fehlerklasse der Gegenstelle auf, auch ohne Text', function () {
         ->and($ergebnis->error)->toBe('unreachable');
 });
 
+it('liest ein ok, das kein echtes true ist, als Fehlschlag', function () {
+    // Die strenge Lesart, an der einen Stelle, die beide Fragen lesen (#9809).
+    //
+    // Der Fall, um den es geht, ist nicht erfunden: `(bool) 'false'` ist
+    // `true`. Lose gelesen gilt so eine Antwort als Erfolg, `data` ist dann
+    // keine Liste, `rows()` ist leer — und heraus kommt eine leere
+    // Aufgabenliste, die sich als vollstaendige Auskunft ausgibt. „Keine
+    // offenen Aufgaben" bei einem System, das welche hat, und auf der Seite
+    // ist nichts, woran man es merkt.
+    //
+    // Alles Truthy-aber-kein-Bool ist eine KAPUTTE Antwort, und eine kaputte
+    // Antwort ist kein Erfolg. Wer das wieder lockert, will diese leere Liste.
+    expect(RemoteResult::fromArray(['ok' => 'false'])->ok)->toBeFalse()
+        ->and(RemoteResult::fromArray(['ok' => 1])->ok)->toBeFalse()
+        ->and(RemoteResult::fromArray(['ok' => '1'])->ok)->toBeFalse()
+        ->and(RemoteResult::fromArray(['ok' => 'yes'])->ok)->toBeFalse()
+        ->and(RemoteResult::fromArray([])->ok)->toBeFalse()
+        // Gegenprobe, damit der Test nicht bloss „alles ist falsch" prueft.
+        ->and(RemoteResult::fromArray(['ok' => true])->ok)->toBeTrue();
+});
+
+it('macht aus einer kaputten Antwort einen Ausfall und keine leere Liste', function () {
+    // Dasselbe eine Ebene hoeher, weil dort der Schaden entstehen wuerde: Die
+    // Quelle muss werfen, das Register muss es als Ausfall fuehren. Ginge die
+    // Antwort als Erfolg durch, stuende das System in `ok` — und `empty()`
+    // saegte „wirklich nichts offen".
+    $register = new TaskSourceRegistry;
+    $register->register(new RemoteTaskSource(new CallableRemoteTaskSystem(
+        key: 'crm',
+        label: 'CRM',
+        capabilities: ['tasks.list'],
+        transport: fn () => RemoteResult::fromArray(['ok' => 'false']),
+        identify: fn (int $userId) => 'jemand@example.com',
+    )));
+
+    $ernte = $register->harvest(1);
+
+    expect($ernte->ok)->toBe([])
+        ->and($ernte->failures)->toHaveKey('crm')
+        ->and($ernte->empty())->toBeFalse('Leer UND vollstaendig waere hier die Luege.');
+});
+
 it('liest einen Erfolg ohne Daten nicht als Fehlschlag', function () {
     // `ok` ist nicht aus `data` ableitbar: Ein Vorgang kann gelingen und nichts
     // zurueckgeben. Wer auf `data !== null` prueft, haelt das eine fuer das

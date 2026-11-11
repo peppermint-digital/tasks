@@ -152,16 +152,14 @@ final class BrueckenSubjektquelle extends TaskSource
         // genau eine zu viel. Dieselbe Entpackung für beide Fragen (#9809).
         $ergebnis = RemoteResult::fromArray($antwort);
 
-        // Strenger als `$ergebnis->ok`, und bewusst so gelassen: `fromArray()`
-        // liest `(bool)`, hier gilt nur ein echtes `true`. Eine Antwort, die
-        // etwas anderes sagt, ist eine kaputte Antwort — als Erfolg gelesen
-        // ergäbe sie eine leere Liste, die sich als vollständige Auskunft
-        // ausgibt, und das ist der Fehler, gegen den dieses Paket gebaut ist.
-        //
-        // Die beiden Lesarten gleichzuziehen ist eine Verhaltensänderung an
-        // einer veröffentlichten Form und keine Aufräumarbeit — sie gehört
-        // entschieden und nicht nebenbei gemacht (gemeldet am 11.11.2026).
-        if (($antwort['ok'] ?? false) !== true) {
+        // `$ergebnis->ok` ist jetzt dieselbe strenge Lesart, die hier von Hand
+        // stand: nur ein echtes `true` gilt. Sie ist nach `fromArray()`
+        // gezogen worden (#9809), weil der Fall, den sie abfängt, nicht dieser
+        // Quelle gehört, sondern der Antwortform — `ok: "false"` als `(bool)`
+        // gelesen ergibt einen ERFOLG, und heraus kommt eine leere Liste, die
+        // sich als vollständige Auskunft ausgibt. Die Begründung steht dort,
+        // an der einen Stelle, die beide Fragen lesen.
+        if (! $ergebnis->ok) {
             // Die Fehlerklasse reist mit. „Nicht freigeschaltet" ist etwas
             // anderes als „antwortet nicht", und der Unterschied entscheidet,
             // was ein Mensch als nächstes tun kann — warten oder nachfragen.

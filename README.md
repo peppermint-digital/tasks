@@ -260,6 +260,15 @@ the bridge reads its answer the same way (#9809); it used to take the four keys
 apart by hand, and a second place where a misplaced `??` turns a failure into a
 quiet success is exactly one too many.
 
+`ok` is the one field read strictly: only a real `true` counts. `(bool)` would
+be the trap, not the convenience — `(bool) 'false'` is `true`, so a system
+answering `{"ok": "false"}` would be read as a success, `data` would be no
+list, `rows()` would be empty, and the result would be an empty task list
+presenting itself as a complete answer. Everything truthy-but-not-a-bool is a
+malformed answer, and a malformed answer is not a success. Failing closed costs
+an error message where a system misbehaves; failing open costs a wrong answer
+nobody sees.
+
 `RemoteTaskSource` therefore knows no single system. It does not know that there
 is a Manager, and it knows none of its field names. The moment it knew one, it
 would be the special-purpose client again.

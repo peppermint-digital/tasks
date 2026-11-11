@@ -27,17 +27,31 @@ use Throwable;
  */
 final class ForeignSourceFailed extends RuntimeException
 {
+    /**
+     * @param  string|null  $errorClass  one of the four comm-layer classes, when known:
+     *                                   not_offered, not_allowed, unreachable, tool_failed.
+     *                                   Added 11.11.2026 and OPTIONAL on purpose — it is
+     *                                   what an interface needs to say something actionable,
+     *                                   but a source that cannot tell them apart must still
+     *                                   be able to report a failure.
+     *                                   See {@see \Peppermint\Tasks\Sources\SubjectSourceFailure}.
+     */
     public function __construct(
         string $message,
         public readonly string $sourceKey,
         public readonly string $operation,
         ?Throwable $cause = null,
+        public readonly ?string $errorClass = null,
     ) {
         parent::__construct($message, 0, $cause);
     }
 
-    public static function during(string $operation, string $sourceKey, ?Throwable $cause = null): self
-    {
+    public static function during(
+        string $operation,
+        string $sourceKey,
+        ?Throwable $cause = null,
+        ?string $errorClass = null,
+    ): self {
         $detail = $cause !== null ? ' — '.$cause->getMessage() : '';
 
         return new self(
@@ -45,6 +59,7 @@ final class ForeignSourceFailed extends RuntimeException
             $sourceKey,
             $operation,
             $cause,
+            $errorClass,
         );
     }
 }

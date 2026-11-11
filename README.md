@@ -194,3 +194,60 @@ The product extends the model, it does not copy it:
 ```php
 class Task extends \Peppermint\Tasks\Models\Task { /* own relations */ }
 ```
+
+## Foreign tasks about a record, not about a person
+
+`TaskSource::tasks(int $userId)` answers "my open tasks, from everywhere". The
+other question a page asks is closed: *what belongs to this order?* That is
+`tasksForSubject(string $type, string|int $id)`.
+
+```php
+$answer = app(TaskSourceRegistry::class)->collectForSubject('order', $order->id);
+
+$answer->tasks;            // array<ForeignTask>, merged across systems
+$answer->isIncomplete();   // did a system fail to answer?
+$answer->missingSources(); // which ones
+```
+
+### Tasks hang on their own record — never on the case file
+
+The Verwaltung task on its order, the Manager task on its project, the CRM task
+on its deal. Whoever wants everything belonging to one case resolves the case
+file into its references first, then asks each system about ITS record.
+
+Three things follow, and all three are why it is not the other way round:
+
+1. A task that existed before the case file does not have to be moved — it is
+   found the moment the case file adopts its record.
+2. This package never has to know what a case file is. It gets a type and an
+   id, which is what the extension point is for. A shared package that had to
+   know a word from one company's world would be cut wrong.
+3. It works without a case file at all. An order with no predecessor and no
+   successor has none and needs none; its tasks still hang correctly.
+
+`$type` is the OTHER system's word for its own record. Translating it here
+would make this package the place where three vocabularies are reconciled —
+the same mistake as translating status words, and for the same reason.
+
+### An empty answer and a failed one are different
+
+`collect()` logs a broken source and moves on, deliberately: that list is long,
+and one missing chip is invisible next to a blank page.
+
+`collectForSubject()` must not do that. The list is short and the question is
+closed — three entries where there should be five looks exactly like a complete
+answer, and there is nothing on the page to notice. So the failure travels back
+as data (`SubjectSourceFailure`, carrying one of `not_offered`, `not_allowed`,
+`unreachable`, `tool_failed`) and the interface says which system is missing.
+
+Still not thrown: the remaining sources keep showing.
+
+### Why `tasksForSubject()` is not abstract
+
+Because making it abstract would have broken every source in every product the
+moment this package moved. `supportsSubjects()` defaults to false, and a source
+that says no is never asked — rather than asked and quietly returning nothing,
+which is the one answer that cannot be told apart from a real empty result.
+
+Called anyway, the default implementation throws. Loud in development beats
+wrong in production.

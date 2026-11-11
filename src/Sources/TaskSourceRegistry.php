@@ -3,6 +3,7 @@
 namespace Peppermint\Tasks\Sources;
 
 use Illuminate\Support\Facades\Log;
+use Peppermint\Tasks\Exceptions\ForeignSourceFailed;
 use Throwable;
 
 /** The foreign task sources of THIS application. */
@@ -86,6 +87,77 @@ class TaskSourceRegistry
             $this->writable(),
             fn (TaskSource $source) => $source instanceof WritableTaskSource && $source->supports($operation),
         );
+    }
+
+    /**
+     * The sources that can answer about a subject right now.
+     *
+     * Two conditions, not one: available (the person has access at all) AND
+     * willing to answer subject questions. Built on `available()` for the same
+     * reason `writable()` is — a product nobody can reach is not asked about
+     * records either.
+     *
+     * @return array<string, TaskSource>
+     */
+    public function forSubjects(): array
+    {
+        return array_filter($this->available(), fn (TaskSource $source) => $source->supportsSubjects());
+    }
+
+    /**
+     * Collects the foreign tasks belonging to ONE record — and what failed.
+     *
+     * ## Why this does not swallow like `collect()` does
+     *
+     * `collect()` logs a broken source and moves on, and the reasoning holds
+     * there: that is the person's own task list, it is long, and one missing
+     * chip is invisible next to a blank page.
+     *
+     * Here the list is short and the question is closed. Someone opens an
+     * order and asks "what else belongs to this?". Three entries where there
+     * should be five looks exactly like a complete answer — there is nothing
+     * on the page to notice. So the failure is not logged away, it is returned
+     * (see {@see SubjectTasks}), and the interface says which system is
+     * missing.
+     *
+     * Still not thrown: the other sources keep showing, and the page works.
+     *
+     * @param  string  $type  the other system's word for its own record
+     * @param  array<int, string>  $skip  sources the person switched off
+     */
+    public function collectForSubject(string $type, string|int $id, array $skip = []): SubjectTasks
+    {
+        $tasks = [];
+        $failures = [];
+
+        foreach ($this->forSubjects() as $key => $source) {
+            if (in_array($key, $skip, true)) {
+                // Switched off is NOT a failure: nobody is waiting for this
+                // answer, so its absence needs no caveat.
+                continue;
+            }
+
+            try {
+                foreach ($source->tasksForSubject($type, $id) as $task) {
+                    $tasks[] = $task;
+                }
+            } catch (ForeignSourceFailed $e) {
+                $failures[$key] = new SubjectSourceFailure($key, $e->getMessage(), $e->errorClass);
+            } catch (Throwable $e) {
+                // Anything else is a defect on our side, not an outage over
+                // there — it still must not blank the page, and it still must
+                // not pass as "nothing found".
+                Log::warning('tasks.subject_source_failed', [
+                    'source' => $key,
+                    'subject_type' => $type,
+                    'message' => $e->getMessage(),
+                ]);
+
+                $failures[$key] = new SubjectSourceFailure($key, $e->getMessage());
+            }
+        }
+
+        return new SubjectTasks($tasks, $failures);
     }
 
     /**

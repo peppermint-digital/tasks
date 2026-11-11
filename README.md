@@ -194,6 +194,27 @@ A **task source** is another system's half of that list.
 
 Everything below is about not building that source four times.
 
+### Two questions, one answer shape
+
+A source is asked two different questions, and both are real:
+
+| Question | Method | Registry |
+|---|---|---|
+| What does this PERSON still have to do? | `tasks(int $userId)` | `harvest()`, `collect()` |
+| What belongs to this RECORD? | `tasksForSubject(string $type, $id)` | `collectForSubject()` |
+
+The first fills a planning list, the second answers "what else belongs to this
+order?" on a record page. Neither replaces the other, and a source may answer
+one, the other, or both — `supportsPerson()` and `supportsSubjects()` say which.
+
+**Both answer in the same shape**, `TaskHarvest`, and that is worth a sentence
+because it was not so for one day. The two queries were built in parallel on
+11.11.2026 and each grew its own answer class — one knowing which systems had
+replied, the other knowing WHY a system had not. A page that shows both halves
+(a record page with a person's own tasks beside it) had to read two shapes to
+ask one question, and the shape decided which half could even carry a caveat.
+One form, so the caveat line is built the same way on both.
+
 ### Fetched, never stored
 
 The tasks stay where they belong. `ForeignTask` is a value object, not a model:
@@ -286,26 +307,74 @@ source out, and returns what the others gave. For a page that draws a list that
 is right — a blank page because somebody else's server is slow is worse than an
 incomplete one.
 
-A form needs the difference, and a log line does not reach the person looking at
-the screen. So `harvest()` returns it:
+For a record it is not merely unhelpful, it is wrong. That list is short and
+the question is closed: three entries where there should be five looks exactly
+like a complete answer, and there is nothing on the page to notice. A long
+personal list can afford a missing chip; a record page cannot.
+
+A log line reaches neither reader. So `harvest()` and `collectForSubject()`
+both return the failure:
 
 ```php
 $ernte = $register->harvest($userId);
+$ernte = $register->collectForSubject('order', $order->id);   // same shape
 
-$ernte->tasks;        // array<ForeignTask>, every source that answered
-$ernte->ok;           // keys that answered — including with nothing
-$ernte->failed;       // key => reason, the other end's words
-$ernte->complete();   // nobody failed
-$ernte->empty();      // really nothing open, as opposed to nothing visible
+$ernte->tasks;            // array<ForeignTask>, every source that answered
+$ernte->ok;               // keys that answered — INCLUDING with nothing
+$ernte->failures;         // key => SourceFailure
+$ernte->complete();       // nobody failed
+$ernte->empty();          // really nothing open, as opposed to nothing visible
+$ernte->missingSources(); // which systems are missing, for the caveat line
 ```
 
-**Empty `tasks` with empty `failed` means really nothing open.** That is the one
-sentence a mask may rely on, and the only reason `TaskHarvest` exists.
+**Empty `tasks` with empty `failures` means really nothing open.** That is the
+one sentence a mask may rely on, and the only reason `TaskHarvest` exists.
+
+`ok` is not derivable from `tasks`: a source that answers with an empty list is
+in `ok` and contributes nothing. Without it, "answered and had nothing" and
+"was never asked" look the same one level up — which is the distinction all of
+this is for.
 
 `collect()` keeps its old shape — the hub calls it, and nothing there should
 change because a form needed more detail. It asks `harvest()` for its answer and
 drops everything but the tasks, so the two cannot drift.
 
+### Four reasons, not one sentence
+
+A failure is a `SourceFailure` and not a string, because "could not be asked"
+is four different situations with four different next steps:
+
+| `reason` | What it means | What helps |
+|---|---|---|
+| `not_offered` | the system does not offer this operation at all | nothing to wait for |
+| `not_allowed` | it offers it, but not to us | ask for a permission |
+| `unreachable` | nobody answered | wait, retry |
+| `tool_failed` | it answered, and the answer was an error | read its log |
+
+A single sentence collapses them, and then the interface says "something went
+wrong" — which tells the person nothing they can act on. Worse, it says it
+WRONGLY: a mask that shows "not allowed" like "not reachable" offers a reload
+that cannot possibly help, and one that shows "not offered" as a failure
+reports an error where there is none. `mightPassByItself()` is that split in
+one call, so an interface does not rebuild it.
+
+```php
+$failure->sourceKey;            // which system
+$failure->reason;               // one of the four, or null
+$failure->message;              // the other end's own words, for a human
+$failure->mightPassByItself();  // is "try again" an honest offer?
+```
+
+`reason` may be **null**, and that is a state and not a gap: a source that
+cannot tell the four apart must still be able to report a failure. Nothing is
+guessed in its place — the interface acts on the reason, so an invented one is
+the expensive kind of wrong. A reason the other end made up is dropped to null
+for the same purpose: the four names are a closed set on the wire, and a fifth
+value would reach a consumer that has exactly four branches.
+
+The four names come from the comm layer, kept as plain strings on purpose. This
+package must not depend on the bridge to name them, and a product on a different
+transport can still fill them in.
 ### The permission check lives over there
 
 The other system owns its tasks, knows which of them are private, and is the
@@ -415,36 +484,12 @@ reading swallows an outage, writing must not. Minutes pass between "page opened"
 and "save pressed", and a task somebody believes they created and that exists
 nowhere is worse than an error message. `ForeignSourceFailed` carries that.
 
-## Adopting an existing table
-
-A package that only runs on fresh tables cannot take on a grown product — and
-then it gets built twice.
-
-```php
-'tables'  => ['tasks' => 'tasks'],
-'columns' => ['tasks' => ['due_date' => 'faellig_am']],
-'run_migrations' => false,
-```
-
-The product extends the model, it does not copy it:
-
-```php
-class Task extends \Peppermint\Tasks\Models\Task { /* own relations */ }
-```
-
-## Foreign tasks about a record, not about a person
+### Tasks about a record, not about a person
 
 `TaskSource::tasks(int $userId)` answers "my open tasks, from everywhere". The
 other question a page asks is closed: *what belongs to this order?* That is
-`tasksForSubject(string $type, string|int $id)`.
-
-```php
-$answer = app(TaskSourceRegistry::class)->collectForSubject('order', $order->id);
-
-$answer->tasks;            // array<ForeignTask>, merged across systems
-$answer->isIncomplete();   // did a system fail to answer?
-$answer->missingSources(); // which ones
-```
+`tasksForSubject(string $type, string|int $id)`, and `collectForSubject()`
+merges the answers in the shape above.
 
 ### Tasks hang on their own record — never on the case file
 
@@ -465,19 +510,6 @@ Three things follow, and all three are why it is not the other way round:
 `$type` is the OTHER system's word for its own record. Translating it here
 would make this package the place where three vocabularies are reconciled —
 the same mistake as translating status words, and for the same reason.
-
-### An empty answer and a failed one are different
-
-`collect()` logs a broken source and moves on, deliberately: that list is long,
-and one missing chip is invisible next to a blank page.
-
-`collectForSubject()` must not do that. The list is short and the question is
-closed — three entries where there should be five looks exactly like a complete
-answer, and there is nothing on the page to notice. So the failure travels back
-as data (`SubjectSourceFailure`, carrying one of `not_offered`, `not_allowed`,
-`unreachable`, `tool_failed`) and the interface says which system is missing.
-
-Still not thrown: the remaining sources keep showing.
 
 ### Asking the other products: one source per answering system
 
@@ -558,3 +590,20 @@ which is the one answer that cannot be told apart from a real empty result.
 
 Called anyway, the default implementation throws. Loud in development beats
 wrong in production.
+
+## Adopting an existing table
+
+A package that only runs on fresh tables cannot take on a grown product — and
+then it gets built twice.
+
+```php
+'tables'  => ['tasks' => 'tasks'],
+'columns' => ['tasks' => ['due_date' => 'faellig_am']],
+'run_migrations' => false,
+```
+
+The product extends the model, it does not copy it:
+
+```php
+class Task extends \Peppermint\Tasks\Models\Task { /* own relations */ }
+```

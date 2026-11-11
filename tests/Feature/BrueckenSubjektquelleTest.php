@@ -331,3 +331,37 @@ it('fragt ohne angemeldete Person gar nicht erst über die Leitung', function ()
     expect((new BrueckenSubjektquellen)->melden($register))->toBe(0)
         ->and($register->all())->toBe([]);
 });
+
+it('nimmt die Farbe nach dem KURZEN Schlüssel, wie der Kalender', function () {
+    bitteEingerichtet();
+
+    AiBrain::shouldReceive('providers')->andReturn([
+        ['slug' => 'peppermint-manager', 'key' => 'manager', 'label' => 'Manager'],
+    ]);
+
+    $register = new TaskSourceRegistry;
+
+    // Nach dem kurzen Schlüssel und nicht nach dem Slug, weil es diese
+    // Zuordnung schon gibt: `config('calendar.source_colours')` ist genau so
+    // aufgebaut. Ein Produkt gibt seine VORHANDENE mit, statt eine zweite zu
+    // pflegen — dasselbe System soll im Terminraster und in der Aufgabenliste
+    // dieselbe Farbe haben.
+    (new BrueckenSubjektquellen(farben: ['manager' => '#f59e0b']))->melden($register);
+
+    expect($register->all()['manager']->colour())->toBe('#f59e0b');
+});
+
+it('meldet keine Farbe, wenn es keine Zuordnung gibt', function () {
+    bitteEingerichtet();
+
+    AiBrain::shouldReceive('providers')->andReturn([
+        ['slug' => 'peppermint-manager', 'key' => 'manager', 'label' => 'Manager'],
+    ]);
+
+    $register = new TaskSourceRegistry;
+    (new BrueckenSubjektquellen)->melden($register);
+
+    // `null` heisst „die Anwendung entscheidet" — besser als eine erfundene
+    // Farbe, die neben einer bestehenden steht.
+    expect($register->all()['manager']->colour())->toBeNull();
+});

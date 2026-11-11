@@ -252,6 +252,20 @@ Still not thrown: the remaining sources keep showing.
 ],
 ```
 
+A **class name, never a closure**: `config:cache` runs on every deploy and
+cannot serialise one. Colours and guard come from a container binding in the
+product, the same way the calendar binds `BrainCalendarSources('web')` — and for
+the second reason stated there too: a binding can be replaced in a test, a `new`
+at the call site cannot, and such a test "would keep reporting green while
+checking nothing".
+
+Colours are keyed by the **short key** (`['manager' => '#f59e0b']`), because that
+map already exists as `config('calendar.source_colours')`. A colour marks the
+SYSTEM, not the feature — the same system should look the same in the calendar
+grid and in a task list. Pass the existing map; do not grow a second one. No map
+is a fine answer: `colour()` returning null means "the application decides",
+which beats an invented colour standing next to an established one.
+
 An entry may now also be a `MeldetQuellenAn` and register SEVERAL sources,
 because how many there are is only known at runtime. The alternative was a thin
 subclass per neighbour: three products with two neighbours each is six classes

@@ -50,10 +50,19 @@ use Peppermint\AiBrainBridge\Verbund\Bruecke;
 final class BrueckenSubjektquellen implements MeldetQuellenAn
 {
     /**
-     * @param  array<string, string>  $farben  Slug => Farbe. Markenfarben sind
-     *                                         Produktwissen, kein Paketwissen —
-     *                                         deshalb aus der Konfiguration des
-     *                                         Produkts und nicht von hier.
+     * @param  array<string, string>  $farben  KURZER SCHLÜSSEL => Farbe, also
+     *                                         `['manager' => '#f59e0b']`.
+     *
+     * Der kurze Schlüssel und nicht der Slug, weil es diese Zuordnung schon
+     * gibt: `config('calendar.source_colours')` ist genau so aufgebaut. Die
+     * Farbe kennzeichnet das SYSTEM und nicht die Sache — dasselbe System soll
+     * im Terminraster und in der Aufgabenliste dieselbe Farbe haben. Ein
+     * Produkt gibt deshalb seine VORHANDENE Zuordnung mit, statt hier eine
+     * zweite zu pflegen.
+     *
+     * Leer lassen ist richtig, wenn es keine gibt: `colour()` null zu melden
+     * heisst „die Anwendung entscheidet", und das ist besser als eine
+     * erfundene Farbe, die neben einer bestehenden steht.
      */
     /**
      * @param  array<string, string>  $farben  Slug => Farbe.
@@ -115,7 +124,8 @@ final class BrueckenSubjektquellen implements MeldetQuellenAn
                 // kann — und ein gespeicherter Filter wäre stumm falsch.
                 schluessel: (string) ($anbieter['key'] ?? $slug),
                 beschriftung: (string) ($anbieter['label'] ?? $slug),
-                farbe: $farben[$slug] ?? null,
+                // Nach dem KURZEN Schlüssel, wie `calendar.source_colours`.
+                farbe: $farben[(string) ($anbieter['key'] ?? $slug)] ?? null,
             ));
 
             $angemeldet++;

@@ -365,3 +365,34 @@ it('meldet keine Farbe, wenn es keine Zuordnung gibt', function () {
     // Farbe, die neben einer bestehenden steht.
     expect($register->all()['manager']->colour())->toBeNull();
 });
+
+it('reicht die übrigen Felder in extra durch, statt sie wegzuwerfen', function () {
+    bitteEingerichtet();
+
+    AiBrain::shouldReceive('gateway')->andReturn(['ok' => true, 'data' => [[
+        'id' => 11,
+        'title' => 'Rechnung schreiben',
+        'status' => 'open',
+        'status_label' => 'Offen',
+        'assigned_user' => ['id' => 3, 'name' => 'Bastian'],
+        'ticket_number' => 'T-42',
+    ]]]);
+
+    $aufgabe = (new BrueckenSubjektquelle('peppermint-verwaltung', 'verwaltung', 'Verwaltung'))
+        ->tasksForSubject('auftrag', 7)[0];
+
+    // Was das Haus des Nachbarn verlässt, entscheidet der NACHBAR in seinem
+    // antwortenden Werkzeug. Eine Auswahl hier wäre eine zweite Filterung an
+    // der falschen Stelle — und jedes neue Anzeigefeld bräuchte eine
+    // Paketfreigabe.
+    expect($aufgabe->extra)->toBe([
+        'status_label' => 'Offen',
+        'assigned_user' => ['id' => 3, 'name' => 'Bastian'],
+        'ticket_number' => 'T-42',
+    ]);
+
+    // Die festen Felder bleiben, wo sie hingehören — nicht doppelt.
+    expect($aufgabe->status)->toBe('open')
+        ->and($aufgabe->extra)->not->toHaveKey('status')
+        ->and($aufgabe->extra)->not->toHaveKey('title');
+});

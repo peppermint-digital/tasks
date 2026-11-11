@@ -198,6 +198,24 @@ final class BrueckenSubjektquelle extends TaskSource
             url: isset($zeile['url']) ? (string) $zeile['url'] : null,
             kind: isset($zeile['kind']) ? (string) $zeile['kind'] : null,
             kindLabel: isset($zeile['kind_label']) ? (string) $zeile['kind_label'] : null,
+            // Alles Übrige reist in `extra` mit — „anything the other system
+            // wants shown".
+            //
+            // Nicht nach einer Liste erlaubter Felder gefiltert, und das ist
+            // die Entscheidung: Was das Haus des Nachbarn verlässt, entscheidet
+            // der NACHBAR, in seinem antwortenden Werkzeug. Eine Auswahl hier
+            // wäre eine zweite Filterung an der falschen Stelle — und jedes
+            // neue Anzeigefeld bräuchte eine Paketfreigabe.
+            //
+            // Was hier gebraucht wird, zeigt der Bestand: Die Auftragsseite
+            // der Verwaltung zeigt heute `status_label` und den Zuständigen,
+            // und beides hat in den festen Feldern von `ForeignTask` keinen
+            // Platz. Ohne diesen Durchlass wäre der Umbau auf diese Quelle ein
+            // Verlust an Anzeige.
+            extra: array_diff_key($zeile, array_flip([
+                'id', 'title', 'status', 'priority', 'due_date',
+                'urgency_score', 'url', 'kind', 'kind_label',
+            ])),
         );
     }
 }

@@ -29,15 +29,33 @@ use Peppermint\AiBrainBridge\Verbund\Bruecke;
  * Konsolenbefehl und jede Warteschlangen-Aufgabe mit einem HTTP-Aufruf zu
  * belasten, der sie nichts angeht.
  */
-final class BrueckenSubjektquellen
+final class BrueckenSubjektquellen implements MeldetQuellenAn
 {
     /**
      * @param  array<string, string>  $farben  Slug => Farbe. Markenfarben sind
-     *                                         Produktwissen, kein Paketwissen.
+     *                                         Produktwissen, kein Paketwissen —
+     *                                         deshalb aus der Konfiguration des
+     *                                         Produkts und nicht von hier.
+     */
+    public function __construct(
+        private readonly array $farben = [],
+    ) {}
+
+    public function anmelden(TaskSourceRegistry $register): void
+    {
+        $this->melden($register);
+    }
+
+    /**
+     * Dasselbe, aber mit der Zahl als Antwort — für Tests und für ein Produkt,
+     * das selbst entscheiden will, was bei null Anbietern passiert.
+     *
      * @return int Wie viele Quellen angemeldet wurden.
      */
-    public static function anmelden(TaskSourceRegistry $register, array $farben = []): int
+    public function melden(TaskSourceRegistry $register): int
     {
+        $farben = $this->farben;
+
         if (! Bruecke::eingerichtet()) {
             // Ohne eingerichtete Brücke keine fremden Quellen — und das ist
             // kein Fehlerzustand, sondern der Zustand von AI Brain selbst: Es

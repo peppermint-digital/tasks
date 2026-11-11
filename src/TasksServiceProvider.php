@@ -8,6 +8,7 @@ use Peppermint\Tasks\Kinds\KindRegistry;
 use Peppermint\Tasks\Kinds\TaskKind;
 use Peppermint\Tasks\Priority\PriorityRegistry;
 use Peppermint\Tasks\Priority\TaskPriority;
+use Peppermint\Tasks\Sources\MeldetQuellenAn;
 use Peppermint\Tasks\Sources\TaskSource;
 use Peppermint\Tasks\Sources\TaskSourceRegistry;
 use Peppermint\Tasks\Status\StatusRegistry;
@@ -52,11 +53,9 @@ class TasksServiceProvider extends ServiceProvider
             'urgency factor',
         ));
 
-        $this->app->singleton(TaskSourceRegistry::class, fn ($app) => $this->build(
+        $this->app->singleton(TaskSourceRegistry::class, fn ($app) => $this->buildSources(
             new TaskSourceRegistry,
             (array) $app['config']->get('tasks.sources', []),
-            TaskSource::class,
-            'task source',
         ));
 
         $this->app->singleton(UrgencyEngine::class);
@@ -141,6 +140,53 @@ class TasksServiceProvider extends ServiceProvider
      * @param  array<int, class-string>  $classes
      * @return T
      */
+    /**
+     * Die Quellen — mit einem Weg mehr als die uebrigen Register.
+     *
+     * Ein Eintrag darf hier auch ein {@see MeldetQuellenAn} sein und MEHRERE
+     * Quellen anmelden. Das ist noetig, weil erst zur Laufzeit feststeht, wie
+     * viele es gibt: Welche Systeme auf einen Vorgang antworten, sagt das
+     * Faehigkeits-Register in AI Brain.
+     *
+     * Der Aufruf geht dabei ueber die Leitung — getragen wird das davon, dass
+     * dieses Register ein Singleton ist und LAZY aufgeloest wird: Wer keine
+     * Quellen braucht, zahlt nichts. Deshalb steht die Anmeldung hier und
+     * nicht in `boot()`, das bei jedem Konsolenbefehl laeuft.
+     *
+     * Ein Fehlschlag beim Fragen ist eine leere Liste und keine Ausnahme (so
+     * sagt es `AiBrain::providers()` zu) — die eigenen Quellen bleiben.
+     *
+     * @param  array<int, class-string>  $classes
+     */
+    protected function buildSources(TaskSourceRegistry $registry, array $classes): TaskSourceRegistry
+    {
+        foreach ($classes as $class) {
+            $entry = $this->app->make($class);
+
+            if ($entry instanceof MeldetQuellenAn) {
+                $entry->anmelden($registry);
+
+                continue;
+            }
+
+            if ($entry instanceof TaskSource) {
+                $registry->register($entry);
+
+                continue;
+            }
+
+            // Dieselbe Begruendung wie bei `build()`: Ein Tippfehler in
+            // `config/tasks.php` taucht sonst viel spaeter als fehlende
+            // Methode an etwas auf, das dort niemand erwartet hat.
+            throw new InvalidArgumentException(
+                "Registered task source [{$class}] does not extend ".TaskSource::class
+                .' and does not implement '.MeldetQuellenAn::class.'.'
+            );
+        }
+
+        return $registry;
+    }
+
     protected function build(object $registry, array $classes, string $contract, string $was): object
     {
         foreach ($classes as $class) {

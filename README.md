@@ -245,12 +245,22 @@ Still not thrown: the remaining sources keep showing.
 ### Asking the other products: one source per answering system
 
 ```php
-// In the product, while building the source list — not in a service provider.
-BrueckenSubjektquellen::anmelden(
-    app(TaskSourceRegistry::class),
-    farben: ['peppermint-crm' => '#16a34a'],   // brand colours are product knowledge
-);
+// config/tasks.php — the one place a product names its sources.
+'sources' => [
+    App\Tasks\Sources\AiBrainTaskSource::class,     // a single source, as before
+    Peppermint\Tasks\Sources\BrueckenSubjektquellen::class,  // "go and ask"
+],
 ```
+
+An entry may now also be a `MeldetQuellenAn` and register SEVERAL sources,
+because how many there are is only known at runtime. The alternative was a thin
+subclass per neighbour: three products with two neighbours each is six classes
+doing the same thing.
+
+The register is a lazily resolved singleton, so the call over the wire is paid
+only by something that actually wants the source list — not by every console
+command. A failure asking is an empty list, not an exception: the product's own
+sources stay.
 
 Who answers is **measured, not configured**: `AiBrain::providers()` asks the
 capability register in Brain. A product that joins appears by itself; one that

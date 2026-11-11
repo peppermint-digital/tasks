@@ -65,7 +65,7 @@ it('meldet für jedes antwortende System eine Quelle an', function () {
 
     $register = new TaskSourceRegistry;
 
-    expect(BrueckenSubjektquellen::anmelden($register))->toBe(2)
+    expect((new BrueckenSubjektquellen)->melden($register))->toBe(2)
         ->and(array_keys($register->all()))->toBe(['crm', 'manager']);
 });
 
@@ -77,7 +77,7 @@ it('nimmt den KURZEN Schlüssel der Brücke, nicht den Slug', function () {
     ]);
 
     $register = new TaskSourceRegistry;
-    BrueckenSubjektquellen::anmelden($register);
+    (new BrueckenSubjektquellen)->melden($register);
 
     // Der Schlüssel steckt in gespeicherten Filtern der Nutzer. Würde das
     // Paket ihn selbst ableiten, hiesse dasselbe System in zwei Oberflächen
@@ -93,7 +93,7 @@ it('meldet nichts an, wenn die Brücke nicht eingerichtet ist', function () {
 
     // Kein Fehlerzustand: AI Brain selbst hat das Paket, ohne die Brücke
     // einzurichten — es ist die Nabe.
-    expect(BrueckenSubjektquellen::anmelden($register))->toBe(0);
+    expect((new BrueckenSubjektquellen)->melden($register))->toBe(0);
 });
 
 it('lässt eine Anbieterzeile ohne Slug draussen, statt die Liste zu verwerfen', function () {
@@ -106,7 +106,7 @@ it('lässt eine Anbieterzeile ohne Slug draussen, statt die Liste zu verwerfen',
 
     $register = new TaskSourceRegistry;
 
-    expect(BrueckenSubjektquellen::anmelden($register))->toBe(1)
+    expect((new BrueckenSubjektquellen)->melden($register))->toBe(1)
         ->and(array_keys($register->all()))->toBe(['crm']);
 });
 
@@ -209,7 +209,7 @@ it('beantwortet die PERSONEN-Frage nicht und bekommt deshalb keinen Chip', funct
 
     $register = new TaskSourceRegistry;
     $register->register(new ErfundeneQuelle('alt'));
-    BrueckenSubjektquellen::anmelden($register);
+    (new BrueckenSubjektquellen)->melden($register);
 
     // Ein Chip, der immer leer ist, ist keine Kleinigkeit: Er liest sich als
     // „von mir liegt da nichts", und das ist eine Behauptung, keine Abwesenheit.
@@ -228,7 +228,7 @@ it('fragt eine Quelle ohne Personen-Antwort in collect() gar nicht', function ()
     AiBrain::shouldReceive('gateway')->never();
 
     $register = new TaskSourceRegistry;
-    BrueckenSubjektquellen::anmelden($register);
+    (new BrueckenSubjektquellen)->melden($register);
 
     expect($register->collect(userId: 1))->toBe([]);
 });
@@ -249,4 +249,49 @@ it('verschwindet von selbst, wenn das System die Fähigkeit verliert', function 
 
     // Gegenprobe: Der Manager steht drin.
     expect((new BrueckenSubjektquelle('peppermint-manager', 'manager', 'Manager'))->isAvailable())->toBeTrue();
+});
+
+/*
+ * Der Weg durch die Konfiguration (#9669).
+ *
+ * Ein Produkt nennt seine Quellen an EINER Stelle: `config('tasks.sources')`.
+ * Seit es Quellen gibt, deren Anzahl erst zur Laufzeit feststeht, darf dort
+ * auch ein Anmelder stehen — sonst bräuchte jedes Produkt eine dünne
+ * Unterklasse je Nachbarsystem.
+ */
+
+it('nimmt einen Anmelder in config(tasks.sources) an und meldet dessen Quellen', function () {
+    bitteEingerichtet();
+
+    AiBrain::shouldReceive('providers')->andReturn([
+        ['slug' => 'peppermint-crm', 'key' => 'crm', 'label' => 'CRM'],
+        ['slug' => 'peppermint-manager', 'key' => 'manager', 'label' => 'Manager'],
+    ]);
+
+    config()->set('tasks.sources', [BrueckenSubjektquellen::class]);
+    app()->forgetInstance(TaskSourceRegistry::class);
+
+    // Zwei Quellen aus EINEM Konfigurationseintrag. Ohne diesen Weg stünden
+    // hier zwei Klassennamen, und bei drei Produkten mit je zwei Nachbarn
+    // wären es sechs Klassen, die dasselbe tun.
+    expect(array_keys(app(TaskSourceRegistry::class)->all()))->toBe(['crm', 'manager']);
+});
+
+it('nimmt weiterhin eine einfache Quelle in der Konfiguration an', function () {
+    config()->set('tasks.sources', [ErfundeneQuelle::class]);
+    app()->forgetInstance(TaskSourceRegistry::class);
+
+    // Gegenprobe: Der neue Weg darf den alten nicht verdrängen — jede
+    // bestehende Quelle in jedem Produkt steht so in der Konfiguration.
+    expect(array_keys(app(TaskSourceRegistry::class)->all()))->toBe(['fremd']);
+});
+
+it('sagt bei einem Eintrag, der keines von beidem ist, laut Bescheid', function () {
+    config()->set('tasks.sources', [stdClass::class]);
+    app()->forgetInstance(TaskSourceRegistry::class);
+
+    // Ein Tippfehler in `config/tasks.php` taucht sonst viel später als
+    // fehlende Methode an etwas auf, das dort niemand erwartet hat.
+    expect(fn () => app(TaskSourceRegistry::class))
+        ->toThrow(InvalidArgumentException::class, 'does not extend');
 });

@@ -242,6 +242,47 @@ as data (`SubjectSourceFailure`, carrying one of `not_offered`, `not_allowed`,
 
 Still not thrown: the remaining sources keep showing.
 
+### Asking the other products: one source per answering system
+
+```php
+// In the product, while building the source list — not in a service provider.
+BrueckenSubjektquellen::anmelden(
+    app(TaskSourceRegistry::class),
+    farben: ['peppermint-crm' => '#16a34a'],   // brand colours are product knowledge
+);
+```
+
+Who answers is **measured, not configured**: `AiBrain::providers()` asks the
+capability register in Brain. A product that joins appears by itself; one that
+loses the capability disappears — nobody has to remember a switch. Its own
+system is never in that list, and neither is a system this one may not call, so
+the grant list is not kept twice.
+
+One source per answering system, because each gets its own chip. Which system
+said what is content: the status words of three systems are not the same, and
+merging them under one heading would claim an equality that does not exist.
+
+`peppermint/ai-brain-bridge` is a `suggest`, not a `require` — same promise as
+the calendar bridge. Without it the package works and there are simply no
+foreign sources; `BrueckenSubjektquelle` is then never loaded, because
+autoloading is lazy.
+
+This replaces the shape it would otherwise have taken: three products with two
+neighbours each is six hand-written classes doing the same thing. That exact
+thing stood in the mailbox package — five hand-written sources across two
+products, four of them identical — until `BridgeWerkzeugquelle` replaced them.
+
+### A subject-only source gets no person chip
+
+`supportsPerson()` defaults to true, so no existing source has to say anything.
+`BrueckenSubjektquelle` says false: "my tasks over there" already flows
+product → Brain → product, and a second path to the same rows would be a second
+truth to keep in step.
+
+The registry then neither asks it in `collect()` nor lists it in `forPersons()`.
+An always-empty chip is not a small blemish — it reads as "nothing of mine over
+there", which is a claim, not an absence.
+
 ### Why `tasksForSubject()` is not abstract
 
 Because making it abstract would have broken every source in every product the

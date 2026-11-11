@@ -33,6 +33,23 @@ abstract class TaskSource
     abstract public function tasks(int $userId): array;
 
     /**
+     * Does this source answer the PERSON question at all?
+     *
+     * Default true, because that is what a source was for until 11.11.2026 and
+     * no existing one has to say so.
+     *
+     * A source that answers only subject questions says false here, and then
+     * the registry neither asks it in `collect()` nor offers it as a person
+     * filter — rather than offering a chip that is always empty. An always
+     * empty chip is not a small blemish: it reads as "nothing of mine over
+     * there", which is a claim, not an absence.
+     */
+    public function supportsPerson(): bool
+    {
+        return true;
+    }
+
+    /**
      * Does this source answer questions about a SUBJECT?
      *
      * Default false, and that default is the whole reason this method exists.

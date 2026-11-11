@@ -90,6 +90,20 @@ class TaskSourceRegistry
     }
 
     /**
+     * The sources that answer the PERSON question right now.
+     *
+     * What an interface builds its filter chips from. A source that only
+     * answers about records does not belong there — see
+     * {@see TaskSource::supportsPerson()}.
+     *
+     * @return array<string, TaskSource>
+     */
+    public function forPersons(): array
+    {
+        return array_filter($this->available(), fn (TaskSource $source) => $source->supportsPerson());
+    }
+
+    /**
      * The sources that can answer about a subject right now.
      *
      * Two conditions, not one: available (the person has access at all) AND
@@ -180,7 +194,10 @@ class TaskSourceRegistry
     {
         $tasks = [];
 
-        foreach ($this->available() as $key => $source) {
+        // `forPersons()`, not `available()`: a subject-only source would be
+        // asked and would answer nothing, which costs a call across a system
+        // boundary for a question it does not hold.
+        foreach ($this->forPersons() as $key => $source) {
             if (in_array($key, $skip, true)) {
                 continue;
             }

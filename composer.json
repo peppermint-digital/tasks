@@ -19,11 +19,13 @@
     "require-dev": {
         "orchestra/testbench": "^9.0|^10.0|^11.0",
         "pestphp/pest": "^3.0|^4.0",
-        "peppermint/calendar": "^0.41"
+        "peppermint/calendar": "^0.41",
+        "peppermint/ai-brain-bridge": "dev-main"
     },
     "suggest": {
         "laravel/mcp": "For the package's base MCP tools. Optional — the package works without it.",
-        "peppermint/calendar": "For the calendar bridge: planned time blocks on a task (TaskBlockKind). Optional — the package works without it, tasks simply have no scheduling."
+        "peppermint/calendar": "For the calendar bridge: planned time blocks on a task (TaskBlockKind). Optional — the package works without it, tasks simply have no scheduling.",
+        "peppermint/ai-brain-bridge": "For foreign task sources over the comm layer (Sources\\BrueckenSubjektquelle): the tasks another product holds for one of its records. Optional — without it the package works, there are simply no foreign sources."
     },
     "autoload": {
         "psr-4": {

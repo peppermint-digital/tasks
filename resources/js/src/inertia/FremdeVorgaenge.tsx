@@ -58,9 +58,19 @@ export interface FremdeQuelle {
  */
 export interface Ausfall {
     source: string;
+    /**
+     * Die KLASSE, nicht der Satz: not_offered, not_allowed, unreachable oder
+     * tool_failed.
+     *
+     * Die Namen sind genau herum, wie sie klingen — das war im ersten Wurf
+     * (meinem) vertauscht und ist in `SourceFailure` richtiggestellt worden:
+     * `reason` ist einer der vier, `message` ist der Satz, den ein Mensch
+     * liest.
+     */
     reason?: string | null;
-    error_class?: string | null;
-    might_pass?: boolean;
+    /** Der Satz, den das andere System selbst geschickt hat. */
+    message?: string | null;
+    may_retry?: boolean;
 }
 
 /**
@@ -89,18 +99,18 @@ interface Props {
 }
 
 function satzZurAbsage(fehlt: Ausfall): string {
-    if (fehlt.error_class === 'not_allowed') {
+    if (fehlt.reason === 'not_allowed') {
         return 'ist für diesen Zugriff nicht freigeschaltet.';
     }
 
-    if (fehlt.error_class === 'not_offered') {
+    if (fehlt.reason === 'not_offered') {
         return 'beantwortet diese Frage nicht.';
     }
 
     // „Unerreichbar" und „das Werkzeug ist gescheitert" können vorübergehen —
     // nur dann darf ein erneutes Laden angeboten werden. Bei einer fehlenden
     // Freigabe wäre es ein falsches Versprechen.
-    return fehlt.might_pass
+    return fehlt.may_retry
         ? 'antwortet gerade nicht — ein erneutes Laden kann helfen.'
         : 'konnte nicht gefragt werden.';
 }
@@ -140,8 +150,15 @@ export function FremdeVorgaenge({
                                 <ul className="mt-1 space-y-0.5 text-xs text-amber-800 dark:text-amber-300">
                                     {fehlend.map((fehlt) => (
                                         <li key={fehlt.source}>
+                                            {/*
+                                              * `message` als Titel: Der Satz, den das andere
+                                              * System geschickt hat, ist oft genauer als unser
+                                              * aus der Klasse gebauter — aber er ist auch roher
+                                              * Text aus einem fremden Haus. Vorne steht der
+                                              * verlaessliche Satz, daneben steht seiner.
+                                              */}
                                             <span className="font-medium">{daten?.sources[fehlt.source]?.label ?? fehlt.source}</span>{' '}
-                                            {satzZurAbsage(fehlt)}
+                                            <span title={fehlt.message ?? undefined}>{satzZurAbsage(fehlt)}</span>
                                         </li>
                                     ))}
                                 </ul>

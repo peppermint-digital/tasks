@@ -2,6 +2,7 @@
 
 namespace Peppermint\Tasks\Sources;
 
+use Illuminate\Support\Facades\Auth;
 use Peppermint\AiBrainBridge\Facades\AiBrain;
 use Peppermint\AiBrainBridge\Verbund\Bruecke;
 
@@ -22,12 +23,29 @@ use Peppermint\AiBrainBridge\Verbund\Bruecke;
  * Kommt ein Produkt dazu, erscheint seine Quelle von selbst. Verliert eines
  * die Fähigkeit, verschwindet sie — ohne dass jemand daran denken muss.
  *
- * ## Wo das aufgerufen wird
+ * ## Ohne angemeldete Person wird nicht gefragt
  *
- * Im Produkt, beim Aufbau der Quellenliste — nicht beim Hochfahren. Der Aufruf
- * geht über die Leitung; ihn in einen Service-Provider zu legen hiesse, jeden
- * Konsolenbefehl und jede Warteschlangen-Aufgabe mit einem HTTP-Aufruf zu
- * belasten, der sie nichts angeht.
+ * Erst die Wache, dann die Leitung. Ein Konsolenbefehl, eine
+ * Warteschlangen-Aufgabe und ein anonymer Zugriff bekommen eine leere Liste,
+ * ohne dass ein HTTP-Aufruf stattfindet — und zwar nicht aus Sparsamkeit: Ohne
+ * Person gibt es auch niemanden, dessen fremde Aufgaben gemeint wären.
+ *
+ * Dieselbe Reihenfolge wie bei `Peppermint\Calendar\Sources\BrainCalendarSources`,
+ * von dort übernommen. Die Wache ist angebbar, weil ein Produkt mehrere haben
+ * kann; die Verwaltung nennt ausdrücklich `web`.
+ *
+ * ## Warum das über die Konfiguration läuft und nicht über `extend()`
+ *
+ * Der Kalender wird im `AppServiceProvider` des Produkts verdrahtet, mit
+ * `$this->app->extend(...)`. Hier steht stattdessen ein Eintrag in
+ * `config('tasks.sources')` — ein bewusster Unterschied, und der Grund steht
+ * im Kalender selbst: Weil seine Fremdquellen NICHT in der Konfiguration
+ * stehen, bedeutete die Liste dort „nie ‚keine fremden Termine‘ — nur ‚keine,
+ * die über die Konfiguration kommen‘". Genau diese Fehllesung ist dort
+ * passiert und als Korrektur vermerkt.
+ *
+ * Mit dem Vertrag {@see MeldetQuellenAn} bleibt die Konfiguration die eine
+ * Stelle, an der man nachsieht, was ein Produkt an Quellen hat.
  */
 final class BrueckenSubjektquellen implements MeldetQuellenAn
 {
@@ -37,8 +55,15 @@ final class BrueckenSubjektquellen implements MeldetQuellenAn
      *                                         deshalb aus der Konfiguration des
      *                                         Produkts und nicht von hier.
      */
+    /**
+     * @param  array<string, string>  $farben  Slug => Farbe.
+     * @param  string|null  $wache  Die Wache, die „ist jemand angemeldet"
+     *                              beantwortet. `null` = die Vorgabe der
+     *                              Anwendung.
+     */
     public function __construct(
         private readonly array $farben = [],
+        private readonly ?string $wache = null,
     ) {}
 
     public function anmelden(TaskSourceRegistry $register): void
@@ -60,6 +85,13 @@ final class BrueckenSubjektquellen implements MeldetQuellenAn
             // Ohne eingerichtete Brücke keine fremden Quellen — und das ist
             // kein Fehlerzustand, sondern der Zustand von AI Brain selbst: Es
             // hat das Paket, ohne es einzurichten, weil es die Nabe ist.
+            return 0;
+        }
+
+        if (Auth::guard($this->wache)->guest()) {
+            // Erst die Wache, dann die Leitung. Ohne Person gibt es niemanden,
+            // dessen fremde Aufgaben gemeint wären — und kein Grund, dafür
+            // über die Systemgrenze zu gehen.
             return 0;
         }
 

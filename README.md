@@ -257,10 +257,15 @@ because how many there are is only known at runtime. The alternative was a thin
 subclass per neighbour: three products with two neighbours each is six classes
 doing the same thing.
 
-The register is a lazily resolved singleton, so the call over the wire is paid
-only by something that actually wants the source list — not by every console
-command. A failure asking is an empty list, not an exception: the product's own
-sources stay.
+The register is a lazily resolved singleton, and the registrar asks the guard
+**before** the wire: a console command, a queue job and an anonymous request get
+an empty list without any HTTP call. Not out of thrift — without a person there
+is nobody whose foreign tasks are meant. Same order as
+`Peppermint\Calendar\Sources\BrainCalendarSources`; the guard is nameable,
+because a product can have several (`new BrueckenSubjektquellen([], 'web')`).
+
+A failure asking is an empty list, not an exception: the product's own sources
+stay.
 
 Who answers is **measured, not configured**: `AiBrain::providers()` asks the
 capability register in Brain. A product that joins appears by itself; one that

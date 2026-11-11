@@ -10,6 +10,7 @@ use Peppermint\Tasks\Sources\BrueckenSubjektquellen;
 use Peppermint\Tasks\Sources\SubjectSourceFailure;
 use Peppermint\Tasks\Sources\TaskSourceRegistry;
 use Peppermint\Tasks\Tests\Support\ErfundeneQuelle;
+use Peppermint\Tasks\Tests\Support\Person;
 
 /*
  * Die fragende Seite (#9669): die Aufgaben eines ANDEREN Produkts zu einem
@@ -21,7 +22,19 @@ use Peppermint\Tasks\Tests\Support\ErfundeneQuelle;
  */
 
 /**
- * Tut so, als wäre die Brücke eingerichtet.
+ * Eine angemeldete Person.
+ *
+ * Nötig, weil die Quellen erst die Wache fragen: Ohne Person gibt es
+ * niemanden, dessen fremde Aufgaben gemeint wären, und keinen Grund, dafür
+ * über die Systemgrenze zu gehen.
+ */
+function angemeldet(): void
+{
+    test()->actingAs(new Person(['id' => 1, 'name' => 'Bastian']));
+}
+
+/**
+ * Tut so, als wäre die Brücke eingerichtet — und als sässe jemand davor.
  *
  * `Bruecke::eingerichtet()` fragt nicht nach der Klasse, sondern danach, ob
  * sie sich AUFLÖSEN lässt — ein `class_exists` sagte beim Hub „ja", und der
@@ -36,6 +49,7 @@ use Peppermint\Tasks\Tests\Support\ErfundeneQuelle;
 function bitteEingerichtet(): void
 {
     Bruecke::vergessen();
+    angemeldet();
 
     $tokens = new OAuthTokenProvider([]);
 
@@ -294,4 +308,26 @@ it('sagt bei einem Eintrag, der keines von beidem ist, laut Bescheid', function 
     // fehlende Methode an etwas auf, das dort niemand erwartet hat.
     expect(fn () => app(TaskSourceRegistry::class))
         ->toThrow(InvalidArgumentException::class, 'does not extend');
+});
+
+it('fragt ohne angemeldete Person gar nicht erst über die Leitung', function () {
+    Bruecke::vergessen();
+
+    $tokens = new OAuthTokenProvider([]);
+    app()->instance(AiBrainManager::class, new AiBrainManager(
+        config: [],
+        tokens: $tokens,
+        publisher: new EventPublisher([], $tokens, 'tasks-test'),
+    ));
+
+    // KEIN `angemeldet()`. Ein Konsolenbefehl, eine Warteschlangen-Aufgabe und
+    // ein anonymer Zugriff sollen keine Anbieter erfragen — und zwar nicht aus
+    // Sparsamkeit: Ohne Person gibt es niemanden, dessen fremde Aufgaben
+    // gemeint wären. Dieselbe Reihenfolge wie bei BrainCalendarSources.
+    AiBrain::shouldReceive('providers')->never();
+
+    $register = new TaskSourceRegistry;
+
+    expect((new BrueckenSubjektquellen)->melden($register))->toBe(0)
+        ->and($register->all())->toBe([]);
 });

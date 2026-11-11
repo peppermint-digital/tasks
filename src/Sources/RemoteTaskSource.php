@@ -2,6 +2,7 @@
 
 namespace Peppermint\Tasks\Sources;
 
+use Illuminate\Support\Facades\Log;
 use Peppermint\Tasks\Exceptions\ForeignSourceFailed;
 
 /**
@@ -144,6 +145,28 @@ class RemoteTaskSource extends TaskSource
         // was Bug #657 in the calendar, and in a task list it would mean
         // handing somebody else's tasks to whoever is logged in.
         if ($this->remote->identify($userId) === null) {
+            // Not a failure, and deliberately not reported as one: the query
+            // did not take place because there was nothing to ask. Somebody
+            // with no CRM account has no CRM tasks, and that is the correct
+            // answer rather than an error state (the source stays in `ok`).
+            //
+            // But two situations look identical from here, and only one of them
+            // is harmless: a person who genuinely has no account over there,
+            // and a MISSING MAPPING. If the identifier is simply not
+            // maintained, this returns an empty list for a system that does
+            // hold tasks — "no open tasks" where there are some, with nothing
+            // on the page to notice.
+            //
+            // So it is written down. `info`, not `warning`, on purpose: the
+            // harmless case is the common one and happens on every page load,
+            // and a warning that fires constantly is a warning nobody reads.
+            // This is the line somebody greps when a system has been
+            // suspiciously quiet for one person — do not remove it as noise.
+            Log::info('tasks.remote_identity_missing', [
+                'source' => $this->key(),
+                'user_id' => $userId,
+            ]);
+
             return [];
         }
 

@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Facades\Log;
 use Peppermint\Tasks\Sources\CallableRemoteTaskSystem;
 use Peppermint\Tasks\Sources\RemoteResult;
 use Peppermint\Tasks\Sources\RemoteTaskSource;
@@ -66,6 +67,45 @@ it('fragt gar nicht, wenn die Person drueben nicht benennbar ist', function () {
 
     expect($quelle->tasks(1))->toBeEmpty()
         ->and($system->aufrufe)->toBeEmpty('Es darf nicht einmal gefragt worden sein.');
+});
+
+it('schreibt eine nicht benennbare Person ins Protokoll, mit System und Kennung', function () {
+    // Kein Ausfall — die Abfrage hat nicht stattgefunden, weil es nichts zu
+    // fragen gab, und wer drueben kein Konto hat, hat drueben keine Aufgaben.
+    //
+    // Aber genau so sieht auch ein FEHLENDES MAPPING aus: Ist die Zuordnung
+    // nicht gepflegt, steht „keine offenen Aufgaben" bei einem System, das
+    // welche hat, und auf der Seite ist nichts, woran man es merkt. Deshalb
+    // steht es im Protokoll — mit Systemschluessel und Nutzerkennung, damit es
+    // diagnostizierbar ist, ohne dass die Maske einen vierten Zustand bekommt.
+    Log::spy();
+
+    $quelle = new RemoteTaskSource(new ErfundenesSystem('crm', kennung: null));
+
+    expect($quelle->tasks(42))->toBeEmpty();
+
+    Log::shouldHaveReceived('info')->withArgs(
+        fn (string $ereignis, array $daten) => $ereignis === 'tasks.remote_identity_missing'
+            && $daten['source'] === 'crm'
+            && $daten['user_id'] === 42,
+    )->once();
+});
+
+it('haelt ein System ohne benennbare Person trotzdem fuer beantwortet', function () {
+    // Die Kehrseite derselben Entscheidung: Es ist kein Ausfall, also steht
+    // das System in `ok` und nicht in `failures`. Eine Maske, die hier „CRM
+    // nicht erreichbar" zeigte, behauptete eine Stoerung, wo ein Mensch
+    // einfach kein Konto hat.
+    Log::spy();
+
+    $register = new TaskSourceRegistry;
+    $register->register(new RemoteTaskSource(new ErfundenesSystem('crm', kennung: null)));
+
+    $ernte = $register->harvest(1);
+
+    expect($ernte->ok)->toBe(['crm'])
+        ->and($ernte->failures)->toBe([])
+        ->and($ernte->empty())->toBeTrue();
 });
 
 it('unterscheidet ein nicht erreichbares System von einem ohne Aufgaben', function () {

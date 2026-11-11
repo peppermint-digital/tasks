@@ -68,6 +68,13 @@ final class SourceFailure
      * that cannot tell the four apart must still be able to report a failure
      * (see {@see \Peppermint\Tasks\Exceptions\ForeignSourceFailed}). An
      * interface shows "could not be asked" for it — which is all anybody knows.
+     *
+     * And null rather than a fifth name like "unknown", which was considered
+     * and rejected on 11.11.2026: "unknown" looks like a reason and is none. It
+     * would land in whatever table maps reasons to sentences, get a sentence
+     * there, and the sentence would say nothing — while null forces the
+     * interface to fall back on `message`, which actually says something. A
+     * placeholder disguised as information is worse than missing information.
      */
     public readonly ?string $reason;
 

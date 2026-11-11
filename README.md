@@ -251,6 +251,15 @@ the host can answer: **what is it called** (`key`, `label`), **what does it
 offer** (`offers`), **who is this person over there** (`identify`), and
 **fetch it** (`call`).
 
+Whatever the way, the ANSWER is read in one place: `RemoteResult::fromArray()`
+turns the four keys `ok`, `data`, `message`, `error` into an object, and
+`rows()` hands out the rows — unpacking an envelope (`{count, data}`) rather
+than insisting on the bare list the contract promises, because the strict
+reading punishes the reader for the writer's mistake. The subject source over
+the bridge reads its answer the same way (#9809); it used to take the four keys
+apart by hand, and a second place where a misplaced `??` turns a failure into a
+quiet success is exactly one too many.
+
 `RemoteTaskSource` therefore knows no single system. It does not know that there
 is a Manager, and it knows none of its field names. The moment it knew one, it
 would be the special-purpose client again.
@@ -396,7 +405,18 @@ narrower, and an unknown person got the whole team calendar. The same shape of
 mistake here hands somebody else's tasks to whoever is logged in.
 
 And an empty answer says nothing about permissions. It means "this person has no
-open tasks there" — never "may see none", never "the system is down".
+open tasks there" — never "may see none", never "the system is down". The source
+stays in `ok`: the query did not take place because there was nothing to ask,
+which is not a failure.
+
+It is written to the log all the same (`tasks.remote_identity_missing`, with
+system key and user id), because two situations look identical from here and
+only one is harmless: somebody who genuinely has no account over there, and a
+**missing mapping**. An unmaintained identifier returns an empty list for a
+system that does hold tasks, and there is nothing on the page to notice. `info`
+and not `warning` — the harmless case happens on every page load, and a warning
+that fires constantly is one nobody reads. It is the line to grep when one
+system has been suspiciously quiet for one person.
 
 Whoever implements the contract for a product is implementing the half that
 trusts, so the other half has to be worth trusting. It has gone wrong twice, and

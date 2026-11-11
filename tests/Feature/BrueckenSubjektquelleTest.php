@@ -5,6 +5,7 @@ use Peppermint\AiBrainBridge\Auth\OAuthTokenProvider;
 use Peppermint\AiBrainBridge\Events\EventPublisher;
 use Peppermint\AiBrainBridge\Facades\AiBrain;
 use Peppermint\AiBrainBridge\Verbund\Bruecke;
+use Peppermint\Tasks\Exceptions\ForeignSourceFailed;
 use Peppermint\Tasks\Sources\BrueckenSubjektquelle;
 use Peppermint\Tasks\Sources\BrueckenSubjektquellen;
 use Peppermint\Tasks\Sources\SourceFailure;
@@ -220,6 +221,87 @@ it('lässt eine Zeile ohne id draussen, statt eine Aufgabe ohne Kennung zu bauen
     // wiederfindbar — sie wäre eine Zeile, die aussieht wie ein Verweis.
     expect($aufgaben)->toHaveCount(1)
         ->and($aufgaben[0]->title)->toBe('Mit Kennung');
+});
+
+/*
+ * Die vier Tests hierunter halten das HEUTIGE Entpacken der Antwort fest
+ * (#9809, 11.11.2026) — BEVOR die Handarbeit hier durch `RemoteResult` ersetzt
+ * wird.
+ *
+ * Grund: Diese Datei beschreibt gepushte, fremde Arbeit. Ein Unterschied im
+ * Entpacken ist ein Unterschied im Verhalten, und er soll an einem roten Test
+ * sichtbar werden statt in einer Abnahme. Was nach der Umstellung anders ist,
+ * wird hier mit Begründung umgeschrieben — nicht gelöscht.
+ */
+
+it('wertet ein ok, das nicht genau true ist, als Fehlschlag', function () {
+    bitteEingerichtet();
+
+    // Streng gelesen, und das ist die vorsichtige Richtung: Eine Antwort, die
+    // nicht `true` sagt, ist eine kaputte Antwort. Sie als Erfolg zu lesen
+    // ergäbe eine leere Liste, die sich als vollständige Auskunft ausgibt —
+    // genau der stille Fehler, gegen den dieses Paket gebaut ist.
+    AiBrain::shouldReceive('gateway')->andReturn(['ok' => 1, 'data' => [
+        ['id' => 11, 'title' => 'Würde durchrutschen'],
+    ]]);
+
+    expect(fn () => (new BrueckenSubjektquelle('peppermint-crm', 'crm', 'CRM'))
+        ->tasksForSubject('deal', 4312))
+        ->toThrow(ForeignSourceFailed::class);
+});
+
+it('liefert eine leere Liste, wenn data gar keine Liste ist', function () {
+    bitteEingerichtet();
+
+    // Kein Wurf: Die Gegenstelle hat geantwortet, nur mit etwas Unbrauchbarem.
+    // Das ist kein Ausfall, den eine Maske als „nicht erreichbar" zeigen darf.
+    AiBrain::shouldReceive('gateway')->andReturn(['ok' => true, 'data' => 'nichts']);
+
+    expect((new BrueckenSubjektquelle('peppermint-crm', 'crm', 'CRM'))
+        ->tasksForSubject('deal', 4312))->toBe([]);
+});
+
+it('lässt einen Umschlag um die Liste heute ins Leere laufen', function () {
+    bitteEingerichtet();
+
+    // Der Vertrag drüben ist eine BLANKE Liste, und genau darauf verlässt sich
+    // dieser Weg. Kommt doch ein Umschlag (`{count, data}`), fällt alles weg:
+    // `count` ist keine Zeile, und die innere Liste hat kein `id`.
+    //
+    // Festgehalten als IST-Stand, nicht als Soll: Eine leere Liste, wo drüben
+    // eine Aufgabe liegt, ist die schlechtere Antwort. Die Personen-Seite
+    // entpackt den Umschlag bereits — die Werkzeuge haben ihn geschickt, dort
+    // ist er gemessen worden.
+    AiBrain::shouldReceive('gateway')->andReturn(['ok' => true, 'data' => [
+        'count' => 1,
+        'data' => [['id' => 11, 'title' => 'Im Umschlag']],
+    ]]);
+
+    expect((new BrueckenSubjektquelle('peppermint-crm', 'crm', 'CRM'))
+        ->tasksForSubject('deal', 4312))->toBe([]);
+});
+
+it('wirft heute mit dem allgemeinen Satz und nicht mit dem Text der Gegenstelle', function () {
+    bitteEingerichtet();
+
+    // Auch IST-Stand: `message` der Gegenstelle wird hier gar nicht gelesen.
+    // Der Wurf trägt den allgemeinen Satz von `ForeignSourceFailed::during()`
+    // — und der sagt, WO etwas gescheitert ist, nicht WAS drüben los war.
+    AiBrain::shouldReceive('gateway')->andReturn([
+        'ok' => false,
+        'error' => SourceFailure::UNREACHABLE,
+        'message' => 'Zeitüberschreitung nach 30s',
+    ]);
+
+    try {
+        (new BrueckenSubjektquelle('peppermint-crm', 'crm', 'CRM'))->tasksForSubject('deal', 4312);
+        $satz = null;
+    } catch (ForeignSourceFailed $e) {
+        $satz = $e->getMessage();
+    }
+
+    expect($satz)->toContain('tasksForSubject')
+        ->and($satz)->not->toContain('Zeitüberschreitung');
 });
 
 it('beantwortet die PERSONEN-Frage nicht und bekommt deshalb keinen Chip', function () {

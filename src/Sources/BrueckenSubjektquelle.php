@@ -145,28 +145,55 @@ final class BrueckenSubjektquelle extends TaskSource
             'subject_id' => (string) $id,
         ], $this->slug);
 
+        // Gelesen wie auf der Personen-Seite, durch {@see RemoteResult}. Die
+        // vier Schlüssel `ok`/`data`/`message`/`error` von Hand auseinander zu
+        // nehmen stand hier ein zweites Mal — und eine zweite Stelle, an der
+        // ein verrutschtes `??` einen Ausfall in einen leisen Erfolg dreht, ist
+        // genau eine zu viel. Dieselbe Entpackung für beide Fragen (#9809).
+        $ergebnis = RemoteResult::fromArray($antwort);
+
+        // Strenger als `$ergebnis->ok`, und bewusst so gelassen: `fromArray()`
+        // liest `(bool)`, hier gilt nur ein echtes `true`. Eine Antwort, die
+        // etwas anderes sagt, ist eine kaputte Antwort — als Erfolg gelesen
+        // ergäbe sie eine leere Liste, die sich als vollständige Auskunft
+        // ausgibt, und das ist der Fehler, gegen den dieses Paket gebaut ist.
+        //
+        // Die beiden Lesarten gleichzuziehen ist eine Verhaltensänderung an
+        // einer veröffentlichten Form und keine Aufräumarbeit — sie gehört
+        // entschieden und nicht nebenbei gemacht (gemeldet am 11.11.2026).
         if (($antwort['ok'] ?? false) !== true) {
             // Die Fehlerklasse reist mit. „Nicht freigeschaltet" ist etwas
             // anderes als „antwortet nicht", und der Unterschied entscheidet,
             // was ein Mensch als nächstes tun kann — warten oder nachfragen.
-            throw ForeignSourceFailed::during(
-                'tasksForSubject',
+            //
+            // Und der TEXT reist jetzt auch mit. Vorher stand im Wurf nur der
+            // allgemeine Satz „der Vorgang ist im System X gescheitert" — er
+            // sagt, WO es gescheitert ist, und verschweigt, was drüben los
+            // war, obwohl die Gegenstelle es mitgeschickt hatte.
+            throw new ForeignSourceFailed(
+                'Die Aufgaben von '.$this->label().' zu diesem Datensatz konnten nicht geholt werden: '
+                    .($ergebnis->message ?? 'ohne Angabe der Gegenstelle'),
                 $this->key(),
+                'tasksForSubject',
                 null,
-                is_string($antwort['error'] ?? null) ? $antwort['error'] : null,
+                $ergebnis->error,
             );
         }
 
-        // `data` ist die blanke Liste, die die Gegenseite herausgibt — Brain
-        // dekodiert den Text des Werkzeugs direkt hinein. Ein Umschlag mit
-        // `count`/`data` ergäbe hier Aufgaben ohne Titel, je eine pro
-        // Schlüssel des Umschlags; genau deshalb ist die Antwort drüben per
-        // Vertrag eine Liste.
-        $zeilen = is_array($antwort['data'] ?? null) ? $antwort['data'] : [];
-
+        // `rows()` gibt die Zeilen heraus — jede für sich, und nur die, die
+        // eine ist. Es packt dabei einen Umschlag (`{count, data}`) aus, statt
+        // ihn abzulehnen: Der Vertrag drüben ist die blanke Liste, aber die
+        // Aufgaben-Werkzeuge haben den Umschlag geschickt, und die strenge
+        // Lesart bestraft den Leser für den Fehler des Schreibers. Vorher fiel
+        // hier in dem Fall ALLES weg — eine leere Liste, wo drüben Aufgaben
+        // liegen.
+        //
+        // Das `id` bleibt Bedingung: Eine Aufgabe ohne Kennung ist nicht
+        // anklickbar und nicht wiederfindbar. `is_array` nicht mehr — dafür
+        // steht `rows()` schon ein.
         return array_values(array_map(
             fn (array $zeile) => $this->uebersetzen($zeile),
-            array_filter($zeilen, static fn ($zeile): bool => is_array($zeile) && isset($zeile['id'])),
+            array_filter($ergebnis->rows(), static fn (array $zeile): bool => isset($zeile['id'])),
         ));
     }
 

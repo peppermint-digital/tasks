@@ -261,32 +261,44 @@ it('liefert eine leere Liste, wenn data gar keine Liste ist', function () {
         ->tasksForSubject('deal', 4312))->toBe([]);
 });
 
-it('lässt einen Umschlag um die Liste heute ins Leere laufen', function () {
+it('packt einen Umschlag um die Liste aus, statt ins Leere zu laufen', function () {
     bitteEingerichtet();
 
-    // Der Vertrag drüben ist eine BLANKE Liste, und genau darauf verlässt sich
-    // dieser Weg. Kommt doch ein Umschlag (`{count, data}`), fällt alles weg:
-    // `count` ist keine Zeile, und die innere Liste hat kein `id`.
+    // Umgeschrieben am 11.11.2026 (#9809), und das neue Verhalten ist das
+    // richtige: Vorher fiel in diesem Fall ALLES weg — `count` ist keine
+    // Zeile, und die innere Liste hat kein `id`. Ergebnis war eine leere
+    // Liste, wo drüben eine Aufgabe liegt, und zwar eine leere Liste, die sich
+    // als vollständige Auskunft ausgibt.
     //
-    // Festgehalten als IST-Stand, nicht als Soll: Eine leere Liste, wo drüben
-    // eine Aufgabe liegt, ist die schlechtere Antwort. Die Personen-Seite
-    // entpackt den Umschlag bereits — die Werkzeuge haben ihn geschickt, dort
-    // ist er gemessen worden.
+    // Der Vertrag drüben ist die blanke Liste, daran ändert das nichts. Aber
+    // die strenge Lesart bestraft den Leser für den Fehler des Schreibers, und
+    // die Aufgaben-Werkzeuge HABEN den Umschlag geschickt — auf der
+    // Personen-Seite ist er gemessen und dort schon entpackt worden.
     AiBrain::shouldReceive('gateway')->andReturn(['ok' => true, 'data' => [
         'count' => 1,
         'data' => [['id' => 11, 'title' => 'Im Umschlag']],
     ]]);
 
-    expect((new BrueckenSubjektquelle('peppermint-crm', 'crm', 'CRM'))
-        ->tasksForSubject('deal', 4312))->toBe([]);
+    $aufgaben = (new BrueckenSubjektquelle('peppermint-crm', 'crm', 'CRM'))
+        ->tasksForSubject('deal', 4312);
+
+    expect($aufgaben)->toHaveCount(1)
+        ->and($aufgaben[0]->title)->toBe('Im Umschlag');
 });
 
-it('wirft heute mit dem allgemeinen Satz und nicht mit dem Text der Gegenstelle', function () {
+it('nimmt den Text der Gegenstelle in den Wurf, nicht nur den allgemeinen Satz', function () {
     bitteEingerichtet();
 
-    // Auch IST-Stand: `message` der Gegenstelle wird hier gar nicht gelesen.
-    // Der Wurf trägt den allgemeinen Satz von `ForeignSourceFailed::during()`
-    // — und der sagt, WO etwas gescheitert ist, nicht WAS drüben los war.
+    // Umgeschrieben am 11.11.2026 (#9809). Vorher wurde `message` hier gar
+    // nicht gelesen, und im Wurf stand der allgemeine Satz von
+    // `ForeignSourceFailed::during()` — er sagt, WO es gescheitert ist, und
+    // verschweigt, was drüben los war, obwohl die Gegenstelle es mitgeschickt
+    // hatte.
+    //
+    // Der Text ist das, was ein Mensch am Ende liest. „Zeitüberschreitung nach
+    // 30s" sagt jemandem, was zu tun ist; „der Vorgang ist im System crm
+    // gescheitert" sagt es nicht. Der GRUND daneben bleibt typisiert — der
+    // Text ist für den Menschen, der Grund für die Maske.
     AiBrain::shouldReceive('gateway')->andReturn([
         'ok' => false,
         'error' => SourceFailure::UNREACHABLE,
@@ -295,13 +307,33 @@ it('wirft heute mit dem allgemeinen Satz und nicht mit dem Text der Gegenstelle'
 
     try {
         (new BrueckenSubjektquelle('peppermint-crm', 'crm', 'CRM'))->tasksForSubject('deal', 4312);
+        $wurf = null;
+    } catch (ForeignSourceFailed $e) {
+        $wurf = $e;
+    }
+
+    expect($wurf?->getMessage())->toContain('Zeitüberschreitung nach 30s')
+        ->and($wurf?->getMessage())->toContain('CRM')
+        ->and($wurf?->errorClass)->toBe('unreachable');
+});
+
+it('wirft auch dann mit einem Satz, wenn die Gegenstelle keinen mitschickt', function () {
+    bitteEingerichtet();
+
+    // „nicht erreichbar: " ohne Text ist schlimmer als eine ehrliche
+    // Fehlanzeige — und `RemoteResult` fällt für `message` auf `error` zurück,
+    // sodass hier wenigstens die Fehlerklasse steht. Fehlt auch die, sagt der
+    // Satz das ausdrücklich.
+    AiBrain::shouldReceive('gateway')->andReturn(['ok' => false]);
+
+    try {
+        (new BrueckenSubjektquelle('peppermint-crm', 'crm', 'CRM'))->tasksForSubject('deal', 4312);
         $satz = null;
     } catch (ForeignSourceFailed $e) {
         $satz = $e->getMessage();
     }
 
-    expect($satz)->toContain('tasksForSubject')
-        ->and($satz)->not->toContain('Zeitüberschreitung');
+    expect($satz)->toContain('ohne Angabe der Gegenstelle');
 });
 
 it('beantwortet die PERSONEN-Frage nicht und bekommt deshalb keinen Chip', function () {

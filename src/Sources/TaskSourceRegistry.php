@@ -192,7 +192,47 @@ class TaskSourceRegistry
      */
     public function collect(int $userId, array $skip = []): array
     {
+        // Asks `harvest()` and drops everything but the tasks. Same signature,
+        // same behaviour, same order — what a caller of this method gets does
+        // not change.
+        //
+        // One body rather than two: the loop carries three decisions (do not
+        // ask a skipped source, do not ask an unavailable one, log a failing
+        // one and carry on), and two copies of three decisions stay in step
+        // only until the first fix touches one of them.
+        return $this->harvest($userId, $skip)->tasks;
+    }
+
+    /**
+     * Collects like `collect()` — and says what did not answer.
+     *
+     * ## Why there are two methods and not one
+     *
+     * `collect()` returns tasks, and that is all a page drawing a list needs:
+     * an unreachable system is left out, the rest stays visible, the reason
+     * goes in the log.
+     *
+     * A FORM needs more. The planning mask asks "which system, then which
+     * task", and through `collect()` the two answers it must tell apart look
+     * the same — "no open tasks" and "was not reachable" are both an empty
+     * list. The first is correct to show as "nothing to do"; the second is a
+     * lie, and somebody plans their day around it.
+     *
+     * The log does not help there: it does not reach the person looking at the
+     * screen. So the failure comes back WITH the result, and `collect()` keeps
+     * its old shape for the callers that want the quiet reading — the hub calls
+     * it, and nothing there should change because a form needed more detail.
+     *
+     * Reading stays quiet either way: nothing throws out of here. The
+     * difference is only whether the reason is recoverable afterwards.
+     *
+     * @param  array<int, string>  $skip
+     */
+    public function harvest(int $userId, array $skip = []): TaskHarvest
+    {
         $tasks = [];
+        $ok = [];
+        $failed = [];
 
         // `forPersons()`, not `available()`: a subject-only source would be
         // asked and would answer nothing, which costs a call across a system
@@ -206,14 +246,28 @@ class TaskSourceRegistry
                 foreach ($source->tasks($userId) as $task) {
                     $tasks[] = $task;
                 }
+
+                // Noted even when it brought nothing: "answered with nothing"
+                // and "was not asked" must stay distinguishable, or the
+                // distinction this method exists for is lost one level up.
+                $ok[] = $key;
             } catch (Throwable $e) {
+                // Logged AS WELL, not instead. The log is what somebody reads
+                // when they ask why a system has been quiet for two days; the
+                // returned reason is what the person in front of the form reads
+                // right now. They answer different questions.
                 Log::warning('tasks.source_failed', [
                     'source' => $key,
                     'message' => $e->getMessage(),
                 ]);
+
+                // The other end's reason, passed through: "Verwaltung nicht
+                // erreichbar: timeout" tells somebody what to do next,
+                // "Fehler" does not.
+                $failed[$key] = $e->getMessage();
             }
         }
 
-        return $tasks;
+        return new TaskHarvest($tasks, $ok, $failed);
     }
 }

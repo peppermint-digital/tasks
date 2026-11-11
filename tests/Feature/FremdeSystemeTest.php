@@ -376,3 +376,21 @@ it('liest einen Erfolg ohne Daten nicht als Fehlschlag', function () {
     expect($ergebnis->ok)->toBeTrue()
         ->and($ergebnis->rows())->toBeEmpty();
 });
+
+it('nimmt die Farbe aus der Anwendung und nicht aus dem Aufrufweg', function () {
+    // Farbe ist reine Darstellung und gehoert der Oberflaeche. Der Test haelt
+    // vor allem den SCHLUESSEL fest: Er steht jetzt als dokumentierter
+    // Platzhalter in config/tasks.php, und ein Umbenennen dort muesste hier
+    // auffallen — sonst liest die Quelle still ins Leere, und niemand sucht
+    // bei einer fehlenden Farbe nach einem Tippfehler in der Config.
+    config()->set('tasks.source_colours.verwaltung', '#f59e0b');
+
+    $mitFarbe = new RemoteTaskSource(new ErfundenesSystem('verwaltung'));
+    $ohneFarbe = new RemoteTaskSource(new ErfundenesSystem('manager'));
+
+    expect($mitFarbe->colour())->toBe('#f59e0b')
+        // Kein Eintrag heisst null: Die Anzeige faellt auf ihre eigene Vorgabe
+        // zurueck, statt dass das Paket eine Palette mitbringt, die jeder
+        // Abnehmer dann ueberschreiben muss.
+        ->and($ohneFarbe->colour())->toBeNull();
+});

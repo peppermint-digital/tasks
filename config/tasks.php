@@ -134,6 +134,32 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Source colours
+    |--------------------------------------------------------------------------
+    |
+    | Source key => colour, for the filter chip. `RemoteTaskSource::colour()`
+    | reads it; a source without an entry returns null, and the display falls
+    | back on its own default.
+    |
+    | Colour is pure presentation, and therefore the APPLICATION's business: it
+    | belongs to the interface, not to the communication layer. Which source
+    | gets which colour is a decision about one product's screens — so the
+    | package names the place and leaves the values empty rather than shipping
+    | a palette that every consumer then has to override.
+    |
+    | Left empty for exactly that reason, and declared anyway for the other
+    | one: a place nobody can see does not get used. The key existed and was
+    | read before this entry did — the calendar package reads
+    | `calendar.source_colours.<key>` the same way and still has that gap on
+    | its side.
+    |
+    |     'source_colours' => ['verwaltung' => '#f59e0b'],
+    |
+    */
+    'source_colours' => [],
+
+    /*
+    |--------------------------------------------------------------------------
     | Tables
     |--------------------------------------------------------------------------
     |

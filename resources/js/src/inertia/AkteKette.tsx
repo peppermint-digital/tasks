@@ -35,7 +35,7 @@ import { Deferred } from '@inertiajs/react';
  * richtige Aussage über die Kette — ihn zu verbergen wäre eine falsche.
  */
 
-/** Ein Verweis, so wie `dossier-show-for-record-tool` ihn herausgibt. */
+/** Ein Verweis, so wie `get-dossier-for-record-tool` ihn herausgibt. */
 export interface AkteVerweis {
     system: string;
     art: string;

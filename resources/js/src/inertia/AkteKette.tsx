@@ -128,11 +128,20 @@ function AkteKetteInhalt({
     // fehlt — und sie darf nicht als „nichts dazu" durchgehen.
     if (daten.ausfall) {
         return (
-            <p className="text-sm text-muted-foreground">
+            /*
+             * Die Meldung des anderen Systems steht im `title`, NICHT in der
+             * Zeile. Sie ist Maschinentext und kann sehr lang werden: Im
+             * Manager sitzt dieses Bauteil in einer 307 px schmalen Spalte,
+             * und ein cURL-Fehler samt Doku-Adresse hat die eine Zeile dort
+             * am 12.11.2026 auf sechs Zeilen und 120 px aufgeblaeht —
+             * gemessen im Browser, nicht vermutet. Der Satz davor sagt der
+             * Person, was los ist; der Wortlaut ist fuer den, der nachsieht.
+             */
+            <p
+                className="text-sm text-muted-foreground"
+                title={daten.ausfall.message ?? undefined}
+            >
                 {satzZurAbsage(daten.ausfall)}
-                {daten.ausfall.message && (
-                    <span className="ml-1 opacity-70">({daten.ausfall.message})</span>
-                )}
             </p>
         );
     }

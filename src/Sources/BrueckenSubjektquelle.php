@@ -2,6 +2,7 @@
 
 namespace Peppermint\Tasks\Sources;
 
+use Illuminate\Support\Facades\Auth;
 use Peppermint\AiBrainBridge\Facades\AiBrain;
 use Peppermint\AiBrainBridge\Verbund\Bruecke;
 use Peppermint\Tasks\Exceptions\ForeignSourceFailed;
@@ -31,24 +32,71 @@ use Peppermint\Tasks\Exceptions\ForeignSourceFailed;
  * mail toolbar. Before it existed there were five hand-written sources across
  * two products, four of which did the same thing.
  *
- * ## It answers the SUBJECT question only
+ * ## It answers BOTH questions — one system, one entry
  *
- * Not "my tasks over there". That already flows product → Brain → product, and
- * a second path to the same rows would be a second truth to keep in step.
- * `supportsPerson()` is therefore false, and the registry does not offer this
- * source as a person-filter chip — rather than offering one that is always
- * empty.
+ * Until 13.11.2026 this class answered the subject question only, and the
+ * reason given was: "my tasks over there already flows product → Brain →
+ * product, a second path to the same rows would be a second truth."
+ *
+ * That premise does not hold, and it was measured rather than argued (#9887,
+ * 13.11.2026): the hub COLLECTS the tasks of all products, but no product
+ * receives that collection. The Manager's `App\Tasks\Sources\AiBrainTaskSource`
+ * asks `list-tasks-tool` — the hub's OWN tasks, not the collection
+ * (`list-product-tasks-tool`) — and its own class head says it plainly:
+ * "Beide Systeme zeigen die Aufgaben des jeweils anderen, keines ist die
+ * Mitte." The path product → Brain exists; product → product did not.
+ *
+ * So the person question had no answer at all. A planning mask asking "which
+ * system, then which task" could therefore only ever show its own tasks, which
+ * is exactly what happened.
+ *
+ * Why it had to be THIS class and not a second one beside it: the registry
+ * holds ONE source per key, and both halves derive their key from the same
+ * system identity. A second source per system silently replaced the first —
+ * measured in the Manager on 13.11.2026, `forSubjects()` went empty and four
+ * tests of #9815 died without a word (Bug #1466 closed that silence).
+ *
+ * A system is ONE entry, and which questions it answers is a property of it.
  */
 final class BrueckenSubjektquelle extends TaskSource
 {
-    /** Der Vorgang, den die Gegenseite anbietet. */
+    /** Der Vorgang, den die Gegenseite fuer die Datensatz-Frage anbietet. */
     public const CAPABILITY = 'tasks.subject.list';
 
+    /** Der Vorgang fuer die Personen-Frage — „meine Aufgaben dort". */
+    public const CAPABILITY_PERSON = 'tasks.list';
+
+    /**
+     * Wie viele Zeilen die Personen-Frage anfordert.
+     *
+     * Dieselbe Zahl und derselbe Grund wie bei {@see RemoteTaskSource}: Ohne
+     * das Argument antwortet jedes der drei Produkte mit 50, und eine Liste,
+     * die bei 50 aufhoert, ist nicht unvollstaendig, sondern falsch — nichts
+     * sagt, dass sie abgeschnitten wurde.
+     */
+    public const ZEILEN = 500;
+
+    /**
+     * @param  bool  $personen  Beantwortet dieses System auch die Personen-Frage?
+     *
+     * Ein WERT und keine Abfrage, und das ist keine Geschmacksfrage: Die
+     * Systemliste einer Maske muss beim Zeichnen schon dastehen. Der
+     * `TaskSourcePicker` im Kalenderpaket hat deshalb absichtlich keinen Lade-
+     * und keinen Ausfallzustand, und sein Docblock begruendet das damit, dass
+     * die Liste „niemanden fragt". Eine Quelle, die beim Zeichnen ins Netz
+     * ginge, naehme genau diese Zusicherung weg — und die Komponente haette
+     * keine Stelle, an der sie den Ausfall anzeigen koennte.
+     *
+     * Gefragt wird deshalb EINMAL, im Anmelder ({@see BrueckenSubjektquellen}),
+     * der ohnehin schon fragt. Hier liegt nur noch die Antwort.
+     */
     public function __construct(
         private readonly string $slug,
         private readonly string $schluessel,
         private readonly string $beschriftung,
         private readonly ?string $farbe = null,
+        private readonly bool $personen = false,
+        private readonly bool $subjekte = true,
     ) {}
 
     /**
@@ -75,29 +123,103 @@ final class BrueckenSubjektquelle extends TaskSource
         return $this->farbe;
     }
 
+    /**
+     * Auch hier nur der Wert — aus demselben Grund wie bei
+     * {@see supportsPerson()}.
+     *
+     * Stand bis zum 13.11.2026 fest auf `true`, und das war richtig, solange
+     * der Anmelder nur ueber `tasks.subject.list` lief: Wer dort stand, konnte
+     * die Frage beantworten. Seit der Anmelder die VEREINIGUNG beider Vorgaenge
+     * anmeldet, ist es eine Eigenschaft des Systems und keine der Klasse.
+     */
     public function supportsSubjects(): bool
     {
-        return true;
-    }
-
-    public function supportsPerson(): bool
-    {
-        return false;
+        return $this->subjekte;
     }
 
     /**
-     * Die Personenfrage beantwortet diese Quelle nicht — siehe Klassenkopf.
+     * Nur der Wert aus dem Konstruktor — hier wird niemand gefragt.
      *
-     * Sie wirft trotzdem nicht: `supportsPerson()` sagt nein, und das Register
-     * fragt sie damit gar nicht. Ein Wurf hier träfe nur jemanden, der an der
-     * Registerprüfung vorbeigeht, und eine leere Liste ist für diesen Fall die
-     * harmlosere Antwort als ein Abbruch der ganzen Aufgabenliste.
+     * Siehe die Begruendung am Konstruktor: Daran haengt die Zusicherung, dass
+     * die Systemliste einer Maske lokale Angabe ist.
+     */
+    public function supportsPerson(): bool
+    {
+        return $this->personen;
+    }
+
+    /**
+     * Die offenen Aufgaben DIESER Person im anderen System.
+     *
+     * ## Warum keine Person im Aufruf steht
+     *
+     * Weil sie nicht hineingehoert. Die handelnde Person reist am Komm-Layer
+     * mit — dieselbe, die angemeldet ist —, und das Zielsystem antwortet fuer
+     * sie und fuer niemanden sonst. Eine Kennung im Argument waere die
+     * Einladung, nach fremden Aufgaben zu fragen; der Riegel steht drueben,
+     * aber eine Frage, die abgewiesen werden MUSS, stellt man gar nicht erst.
+     *
+     * Bastian am 11.11.2026: „Natuerlich darf ich nur meine Aufgaben sehen."
+     *
+     * ## Warum trotzdem nicht fuer jede Kennung
+     *
+     * `$userId` ist die Person, deren Liste gemeint ist. Ist das nicht die
+     * angemeldete, findet die Frage NICHT statt — und zwar hier und nicht
+     * drueben: Ein Aufruf, dessen Identitaet unterwegs verlorengeht, macht die
+     * Antwort WEITER statt enger. Das war Bug #657 im Kalender, und in einer
+     * Aufgabenliste hiesse es, jemandem die Aufgaben eines anderen zu zeigen.
+     *
+     * ## Nur offene, und nicht die ersten funfzig
+     *
+     * Dieselben zwei Argumente, die {@see RemoteTaskSource} sendet, und aus
+     * denselben gemessenen Gruenden (#8471): Ohne `limit` antworten alle drei
+     * Produkte mit 50 — eine Liste, die aufhoert, ohne es zu sagen. Und ohne
+     * `active_only` waeren am lebenden Manager 438 von 470 Zeilen erledigt:
+     * vollstaendig und unbrauchbar im selben Schritt.
      *
      * @return array<int, ForeignTask>
+     *
+     * @throws ForeignSourceFailed mit der Fehlerklasse des Komm-Layers
      */
     public function tasks(int $userId): array
     {
-        return [];
+        if (! $this->personen) {
+            // Das Register fragt gar nicht erst — `supportsPerson()` sagt
+            // nein. Der Wurf traefe nur jemanden, der an der Registerpruefung
+            // vorbeigeht, und eine leere Liste ist dafuer die harmlosere
+            // Antwort als ein Abbruch der ganzen Aufgabenliste.
+            return [];
+        }
+
+        if ($userId !== (int) (Auth::id() ?? 0)) {
+            // Fail-closed. Siehe oben: eine fremde Liste gibt es hier nicht,
+            // auch nicht fuer Leitungsrollen.
+            return [];
+        }
+
+        $ergebnis = RemoteResult::fromArray(AiBrain::gateway(self::CAPABILITY_PERSON, [
+            'limit' => self::ZEILEN,
+            'active_only' => true,
+        ], $this->slug));
+
+        if (! $ergebnis->ok) {
+            // Ein Ausfall ist kein leeres Ergebnis. Das Register protokolliert
+            // und laesst die Quelle aus (`collect()`) oder nennt sie in der
+            // Antwort (`harvest()`) — gelesen wird beides aus diesem Wurf.
+            throw new ForeignSourceFailed(
+                $this->label().' nicht erreichbar: '
+                    .($ergebnis->message ?? 'ohne Angabe der Gegenstelle'),
+                $this->key(),
+                'tasks',
+                null,
+                $ergebnis->error,
+            );
+        }
+
+        return array_values(array_map(
+            fn (array $zeile) => $this->uebersetzen($zeile),
+            array_filter($ergebnis->rows(), static fn (array $zeile): bool => isset($zeile['id'])),
+        ));
     }
 
     /**
@@ -117,13 +239,33 @@ final class BrueckenSubjektquelle extends TaskSource
             return false;
         }
 
-        foreach (AiBrain::providers(self::CAPABILITY) as $anbieter) {
-            if (($anbieter['slug'] ?? null) === $this->slug) {
-                return true;
+        // Gefragt wird nur nach den Vorgaengen, die diese Quelle ueberhaupt
+        // FUEHRT, und es wird beim ersten Treffer aufgehoert. Ein System, das
+        // beide beantwortet — heute alle drei —, kostet damit genau einen
+        // Aufruf, so viele wie vorher. Ein System, das nur einen fuehrt, wird
+        // nach dem RICHTIGEN gefragt statt nach dem anderen.
+        foreach ($this->gefuehrteVorgaenge() as $vorgang) {
+            foreach (AiBrain::providers($vorgang) as $anbieter) {
+                if (($anbieter['slug'] ?? null) === $this->slug) {
+                    return true;
+                }
             }
         }
 
         return false;
+    }
+
+    /**
+     * Die Vorgaenge, die diese Quelle beantwortet.
+     *
+     * @return array<int, string>
+     */
+    private function gefuehrteVorgaenge(): array
+    {
+        return array_values(array_filter([
+            $this->subjekte ? self::CAPABILITY : null,
+            $this->personen ? self::CAPABILITY_PERSON : null,
+        ]));
     }
 
     /**

@@ -9,6 +9,23 @@ use Peppermint\AiBrainBridge\Verbund\Bruecke;
 /**
  * Meldet für jedes antwortende System eine Quelle an — gemessen, nicht gepflegt.
  *
+ * ## Eine Quelle je System, nicht je Frage
+ *
+ * Gefragt wird nach ZWEI Vorgängen: `tasks.subject.list` („was gehört zu
+ * diesem Datensatz") und `tasks.list` („meine Aufgaben dort"). Angemeldet wird
+ * daraus trotzdem EINE Quelle je System, die beide Flaggen trägt.
+ *
+ * Nicht zwei Quellen nebeneinander, und das ist nicht Geschmack: Das Register
+ * hält eine Quelle je Schlüssel, und beide Hälften leiten ihren Schlüssel aus
+ * derselben Systemkennung ab. Zwei Anmeldungen überschrieben einander — im
+ * Manager gemessen am 13.11.2026, `forSubjects()` lief leer und vier Tests
+ * starben, ohne dass irgendwo etwas gemeldet wurde (#9887, Bug #1466).
+ *
+ * Beide Abfragen stehen HIER und nicht in der Quelle: Die Systemliste einer
+ * Maske muss beim Zeichnen schon dastehen, sonst nimmt sie dem
+ * `TaskSourcePicker` im Kalenderpaket die Zusicherung weg, auf der dessen
+ * fehlender Lade- und Ausfallzustand beruht.
+ *
  * ## Warum nicht eine Quelle je Nachbar von Hand
  *
  * Drei Produkte mit je zwei Nachbarn wären sechs Klassen, die dasselbe täten.
@@ -104,18 +121,24 @@ final class BrueckenSubjektquellen implements MeldetQuellenAn
             return 0;
         }
 
+        // ZWEI Abfragen, und zwar hier und nur hier. Die Quelle selbst fragt
+        // danach niemanden mehr: Die Systemliste einer Maske muss beim
+        // Zeichnen schon dastehen — siehe die Begründung am Konstruktor von
+        // {@see BrueckenSubjektquelle}.
+        $subjekte = $this->anbieterNachSlug(BrueckenSubjektquelle::CAPABILITY);
+        $personen = $this->anbieterNachSlug(BrueckenSubjektquelle::CAPABILITY_PERSON);
+
         $angemeldet = 0;
 
-        foreach (AiBrain::providers(BrueckenSubjektquelle::CAPABILITY) as $anbieter) {
-            $slug = isset($anbieter['slug']) ? (string) $anbieter['slug'] : '';
-
-            if ($slug === '') {
-                // Ohne Slug ist die Zeile unbrauchbar: Er ist es, mit dem der
-                // nächste Aufruf adressiert wird. Eine kaputte Zeile lässt die
-                // übrigen stehen, statt die Liste zu verwerfen.
-                continue;
-            }
-
+        // Die VEREINIGUNG, nicht einer der beiden Vorgänge. Ein System, das
+        // nur die Personen-Frage beantwortet, bekäme sonst gar keine Quelle —
+        // und zwar lautlos: Es stünde einfach nicht in der Liste, ohne dass
+        // irgendwo ein Fehler entstünde.
+        //
+        // Die Reihenfolge ist die der Subjekt-Antwort zuerst, damit sich an
+        // bestehenden Oberflächen nichts verschiebt; was nur Personen führt,
+        // kommt dahinter.
+        foreach ($subjekte + $personen as $slug => $anbieter) {
             $register->register(new BrueckenSubjektquelle(
                 slug: $slug,
                 // Der kurze Schlüssel und die kurze Beschriftung kommen aus der
@@ -126,11 +149,41 @@ final class BrueckenSubjektquellen implements MeldetQuellenAn
                 beschriftung: (string) ($anbieter['label'] ?? $slug),
                 // Nach dem KURZEN Schlüssel, wie `calendar.source_colours`.
                 farbe: $farben[(string) ($anbieter['key'] ?? $slug)] ?? null,
+                // Welche Fragen dieses System beantwortet — gemessen, nicht
+                // angenommen, und als WERT übergeben.
+                personen: isset($personen[$slug]),
+                subjekte: isset($subjekte[$slug]),
             ));
 
             $angemeldet++;
         }
 
         return $angemeldet;
+    }
+
+    /**
+     * Die Anbieter eines Vorgangs, nach Slug greifbar.
+     *
+     * Ohne Slug ist eine Zeile unbrauchbar: Er ist es, mit dem der nächste
+     * Aufruf adressiert wird. Eine kaputte Zeile lässt die übrigen stehen,
+     * statt die Liste zu verwerfen.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    private function anbieterNachSlug(string $vorgang): array
+    {
+        $nachSlug = [];
+
+        foreach (AiBrain::providers($vorgang) as $anbieter) {
+            $slug = isset($anbieter['slug']) ? (string) $anbieter['slug'] : '';
+
+            if ($slug === '') {
+                continue;
+            }
+
+            $nachSlug[$slug] = $anbieter;
+        }
+
+        return $nachSlug;
     }
 }

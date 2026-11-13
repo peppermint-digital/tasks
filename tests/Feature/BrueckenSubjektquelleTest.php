@@ -71,8 +71,19 @@ afterEach(function () {
 it('meldet für jedes antwortende System eine Quelle an', function () {
     bitteEingerichtet();
 
+    // Seit #9887 werden ZWEI Vorgänge gefragt — „was gehört zu diesem
+    // Datensatz" und „meine Aufgaben dort". Angemeldet wird daraus trotzdem
+    // eine Quelle je System: Das Register hält eine je Schlüssel, und zwei
+    // Anmeldungen überschrieben einander lautlos.
     AiBrain::shouldReceive('providers')
         ->with(BrueckenSubjektquelle::CAPABILITY)
+        ->andReturn([
+            ['slug' => 'peppermint-crm', 'name' => 'Peppermint CRM', 'key' => 'crm', 'label' => 'CRM'],
+            ['slug' => 'peppermint-manager', 'name' => 'Peppermint Manager', 'key' => 'manager', 'label' => 'Manager'],
+        ]);
+
+    AiBrain::shouldReceive('providers')
+        ->with(BrueckenSubjektquelle::CAPABILITY_PERSON)
         ->andReturn([
             ['slug' => 'peppermint-crm', 'name' => 'Peppermint CRM', 'key' => 'crm', 'label' => 'CRM'],
             ['slug' => 'peppermint-manager', 'name' => 'Peppermint Manager', 'key' => 'manager', 'label' => 'Manager'],
@@ -82,6 +93,43 @@ it('meldet für jedes antwortende System eine Quelle an', function () {
 
     expect((new BrueckenSubjektquellen)->melden($register))->toBe(2)
         ->and(array_keys($register->all()))->toBe(['crm', 'manager']);
+});
+
+/**
+ * Ein System, das NUR die Personen-Frage beantwortet, bekommt trotzdem eine
+ * Quelle (#9887).
+ *
+ * Vorher lief der Anmelder allein über `tasks.subject.list`. Wer den nicht
+ * anbot, stand in keiner Liste — und zwar lautlos: Es entstand nirgends ein
+ * Fehler, das System war einfach nicht da.
+ */
+it('meldet auch ein System an, das nur die Personen-Frage beantwortet', function () {
+    bitteEingerichtet();
+
+    AiBrain::shouldReceive('providers')
+        ->with(BrueckenSubjektquelle::CAPABILITY)
+        ->andReturn([
+            ['slug' => 'peppermint-crm', 'key' => 'crm', 'label' => 'CRM'],
+        ]);
+
+    AiBrain::shouldReceive('providers')
+        ->with(BrueckenSubjektquelle::CAPABILITY_PERSON)
+        ->andReturn([
+            ['slug' => 'peppermint-verwaltung', 'key' => 'verwaltung', 'label' => 'Verwaltung'],
+        ]);
+
+    $register = new TaskSourceRegistry;
+
+    expect((new BrueckenSubjektquellen)->melden($register))->toBe(2)
+        // Die Vereinigung, und die Subjekt-Antwort zuerst — damit sich an
+        // bestehenden Oberflächen nichts verschiebt.
+        ->and(array_keys($register->all()))->toBe(['crm', 'verwaltung']);
+
+    // Und jede trägt genau die Frage, die ihr System beantwortet.
+    expect($register->all()['crm']->supportsSubjects())->toBeTrue()
+        ->and($register->all()['crm']->supportsPerson())->toBeFalse()
+        ->and($register->all()['verwaltung']->supportsSubjects())->toBeFalse()
+        ->and($register->all()['verwaltung']->supportsPerson())->toBeTrue();
 });
 
 it('nimmt den KURZEN Schlüssel der Brücke, nicht den Slug', function () {
@@ -336,7 +384,22 @@ it('wirft auch dann mit einem Satz, wenn die Gegenstelle keinen mitschickt', fun
     expect($satz)->toContain('ohne Angabe der Gegenstelle');
 });
 
-it('beantwortet die PERSONEN-Frage nicht und bekommt deshalb keinen Chip', function () {
+/**
+ * Beide Fragen an EINER Quelle (#9887).
+ *
+ * Hier stand bis zum 13.11.2026 das Gegenteil: „beantwortet die PERSONEN-Frage
+ * nicht und bekommt deshalb keinen Chip". Die Begründung dafür war, der Weg
+ * „meine Aufgaben dort" laufe schon Produkt → Brain → Produkt — und genau das
+ * wurde am 13.11.2026 nachgemessen und traf nicht zu: Die Nabe SAMMELT die
+ * Aufgaben aller Produkte, aber kein Produkt bekommt den Sammelbestand. Die
+ * Personen-Frage hatte also gar keine Antwort.
+ *
+ * Der alte Satz war trotzdem nicht falsch, sondern nur zu eng: Ein Chip, der
+ * IMMER leer ist, liest sich als „von mir liegt da nichts" und ist damit eine
+ * Behauptung statt einer Abwesenheit. Deshalb hängt es jetzt an einer
+ * gemessenen Angabe — wer `tasks.list` anbietet, bekommt den Chip, und nur der.
+ */
+it('beantwortet beide Fragen, wenn das System beide Vorgänge anbietet', function () {
     bitteEingerichtet();
 
     AiBrain::shouldReceive('providers')->andReturn([
@@ -347,26 +410,129 @@ it('beantwortet die PERSONEN-Frage nicht und bekommt deshalb keinen Chip', funct
     $register->register(new ErfundeneQuelle('alt'));
     (new BrueckenSubjektquellen)->melden($register);
 
-    // Ein Chip, der immer leer ist, ist keine Kleinigkeit: Er liest sich als
-    // „von mir liegt da nichts", und das ist eine Behauptung, keine Abwesenheit.
-    expect(array_keys($register->forPersons()))->toBe(['alt'])
-        ->and(array_keys($register->forSubjects()))->toBe(['crm']);
+    expect(array_keys($register->forPersons()))->toBe(['alt', 'crm'])
+        ->and(array_keys($register->forSubjects()))->toBe(['crm'])
+        // Der Kern der Entscheidung: EIN Eintrag je System, nicht zwei.
+        ->and(array_keys($register->all()))->toBe(['alt', 'crm']);
 });
 
+/**
+ * Eine Quelle, deren System `tasks.list` NICHT anbietet, wird nicht gefragt.
+ *
+ * Die Frage ist dieselbe geblieben wie vor #9887, nur hängt die Antwort jetzt
+ * an einer Messung statt an der Klasse: Ein `gateway`-Aufruf wäre ein Gang über
+ * die Systemgrenze für eine Frage, die dieses System nicht hält.
+ */
 it('fragt eine Quelle ohne Personen-Antwort in collect() gar nicht', function () {
     bitteEingerichtet();
 
-    AiBrain::shouldReceive('providers')->andReturn([
-        ['slug' => 'peppermint-crm', 'key' => 'crm', 'label' => 'CRM'],
-    ]);
-    // Ein `gateway`-Aufruf waere hier ein Gang über die Systemgrenze für eine
-    // Frage, die diese Quelle nicht hält.
+    AiBrain::shouldReceive('providers')
+        ->with(BrueckenSubjektquelle::CAPABILITY)
+        ->andReturn([
+            ['slug' => 'peppermint-crm', 'key' => 'crm', 'label' => 'CRM'],
+        ]);
+
+    // Das CRM steht NICHT unter den Anbietern der Personen-Frage.
+    AiBrain::shouldReceive('providers')
+        ->with(BrueckenSubjektquelle::CAPABILITY_PERSON)
+        ->andReturn([]);
+
     AiBrain::shouldReceive('gateway')->never();
 
     $register = new TaskSourceRegistry;
     (new BrueckenSubjektquellen)->melden($register);
 
     expect($register->collect(userId: 1))->toBe([]);
+});
+
+/**
+ * Und die Gegenprobe: Wer sie anbietet, WIRD gefragt — mit der angemeldeten
+ * Person und mit den beiden Argumenten, ohne die die Antwort bei 50 aufhört
+ * oder zu 93 Prozent aus Erledigtem besteht (#8471).
+ */
+it('holt die eigenen Aufgaben eines Systems, das die Personen-Frage anbietet', function () {
+    bitteEingerichtet();
+
+    AiBrain::shouldReceive('providers')->andReturn([
+        ['slug' => 'peppermint-verwaltung', 'key' => 'verwaltung', 'label' => 'Verwaltung'],
+    ]);
+
+    AiBrain::shouldReceive('gateway')
+        ->once()
+        ->with(BrueckenSubjektquelle::CAPABILITY_PERSON, [
+            'limit' => BrueckenSubjektquelle::ZEILEN,
+            'active_only' => true,
+        ], 'peppermint-verwaltung')
+        ->andReturn(['ok' => true, 'data' => [
+            ['id' => 40, 'title' => 'Ticket prüfen', 'status' => 'open', 'url' => 'https://vw/tickets/40'],
+        ]]);
+
+    $register = new TaskSourceRegistry;
+    (new BrueckenSubjektquellen)->melden($register);
+
+    $aufgaben = $register->collect(userId: 1);
+
+    expect($aufgaben)->toHaveCount(1)
+        ->and($aufgaben[0]->id)->toBe(40)
+        ->and($aufgaben[0]->sourceKey)->toBe('verwaltung')
+        // Unübersetzt: „open" heisst dort „open".
+        ->and($aufgaben[0]->status)->toBe('open')
+        ->and($aufgaben[0]->url)->toBe('https://vw/tickets/40');
+});
+
+/**
+ * Nur die eigenen — fail-closed, und zwar HIER.
+ *
+ * Bastian am 11.11.2026: „Natürlich darf ich nur meine Aufgaben sehen." Ein
+ * Aufruf, dessen Identität unterwegs verlorengeht, macht die Antwort WEITER
+ * statt enger; das war Bug #657 im Kalender, und in einer Aufgabenliste hiesse
+ * es, jemandem die Aufgaben eines anderen zu zeigen.
+ */
+it('holt die Aufgaben einer anderen Person gar nicht erst', function () {
+    bitteEingerichtet();
+
+    AiBrain::shouldReceive('providers')->andReturn([
+        ['slug' => 'peppermint-verwaltung', 'key' => 'verwaltung', 'label' => 'Verwaltung'],
+    ]);
+
+    AiBrain::shouldReceive('gateway')->never();
+
+    // Angemeldet ist 1 (siehe `angemeldet()`), gefragt wird nach 2.
+    expect((new BrueckenSubjektquelle('peppermint-verwaltung', 'verwaltung', 'Verwaltung', null, personen: true))
+        ->tasks(2))->toBe([]);
+});
+
+/**
+ * Ein Ausfall bei der Personen-Frage ist kein leeres Ergebnis.
+ *
+ * Dieselbe Trennung wie auf der Datensatz-Seite: Die Fehlerklasse des
+ * Komm-Layers reist mit, weil „nicht freigeschaltet" und „antwortet nicht" zu
+ * verschiedenen nächsten Schritten führen.
+ */
+it('reicht die Fehlerklasse auch bei der Personen-Frage durch', function () {
+    bitteEingerichtet();
+
+    AiBrain::shouldReceive('providers')->andReturn([
+        ['slug' => 'peppermint-verwaltung', 'key' => 'verwaltung', 'label' => 'Verwaltung'],
+    ]);
+
+    AiBrain::shouldReceive('gateway')->andReturn([
+        'ok' => false, 'error' => SourceFailure::NOT_ALLOWED, 'message' => 'Keine Freigabe',
+    ]);
+
+    $quelle = new BrueckenSubjektquelle('peppermint-verwaltung', 'verwaltung', 'Verwaltung', null, personen: true);
+
+    try {
+        $quelle->tasks(1);
+        $klasse = null;
+        $satz = null;
+    } catch (ForeignSourceFailed $e) {
+        $klasse = $e->errorClass;
+        $satz = $e->getMessage();
+    }
+
+    expect($klasse)->toBe(SourceFailure::NOT_ALLOWED)
+        ->and($satz)->toContain('Keine Freigabe');
 });
 
 it('verschwindet von selbst, wenn das System die Fähigkeit verliert', function () {

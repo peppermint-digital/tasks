@@ -599,16 +599,44 @@ neighbours each is six hand-written classes doing the same thing. That exact
 thing stood in the mailbox package — five hand-written sources across two
 products, four of them identical — until `BridgeWerkzeugquelle` replaced them.
 
-### A subject-only source gets no person chip
+### One system, one entry — and the questions it answers are measured
 
 `supportsPerson()` defaults to true, so no existing source has to say anything.
-`BrueckenSubjektquelle` says false: "my tasks over there" already flows
-product → Brain → product, and a second path to the same rows would be a second
-truth to keep in step.
+`BrueckenSubjektquelle` used to say a flat false, with this reason: "my tasks
+over there already flows product → Brain → product, and a second path to the
+same rows would be a second truth to keep in step."
 
-The registry then neither asks it in `collect()` nor lists it in `forPersons()`.
-An always-empty chip is not a small blemish — it reads as "nothing of mine over
-there", which is a claim, not an absence.
+**That premise was measured on 13.11.2026 (#9887) and does not hold.** The hub
+COLLECTS the tasks of every connected product, but no product receives that
+collection: the Manager's own Brain source asks `list-tasks-tool` — the hub's
+own tasks — not `list-product-tasks-tool`. The path product → Brain exists;
+product → product did not. So the person question simply had no answer, and a
+planning mask asking "which system, then which task" could only ever offer its
+own tasks.
+
+Both halves therefore live in **one** source per system, and both are facts
+about that system rather than about the class: the registrar asks the capability
+register for `tasks.subject.list` AND for `tasks.list`, registers the union, and
+passes each answer in as a value.
+
+Not two sources side by side, and this is not taste: the registry holds one
+source per key, and both halves derive their key from the same system identity.
+A second source per system silently replaced the first — measured in the
+Manager, `forSubjects()` went empty and four tests of a feature shipped that
+same day died without a word. `register()` now refuses a taken key
+(`SourceKeyTaken`, Bug #1466) rather than letting that happen quietly again.
+
+The flags are **values, not live lookups**, and that matters beyond tidiness: a
+mask draws its system list before anything is asked. The calendar package's
+`TaskSourcePicker` deliberately has no loading and no failure state, and its
+docblock grounds that in the list being local. A source that went to the wire
+while the page is being drawn would take that assurance away — and the component
+has nowhere to show the failure.
+
+A source that does not answer the person question is still neither asked in
+`collect()` nor listed in `forPersons()`. An always-empty chip is not a small
+blemish — it reads as "nothing of mine over there", which is a claim, not an
+absence.
 
 ### Why `tasksForSubject()` is not abstract
 

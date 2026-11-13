@@ -4,6 +4,7 @@ namespace Peppermint\Tasks\Sources;
 
 use Illuminate\Support\Facades\Log;
 use Peppermint\Tasks\Exceptions\ForeignSourceFailed;
+use Peppermint\Tasks\Exceptions\SourceKeyTaken;
 use Throwable;
 
 /** The foreign task sources of THIS application. */
@@ -12,9 +13,39 @@ class TaskSourceRegistry
     /** @var array<string, TaskSource> */
     protected array $sources = [];
 
-    public function register(TaskSource $source): void
+    /**
+     * Eine Quelle anmelden — und bei belegtem Schlüssel laut werden.
+     *
+     * ## Warum das wirft, statt zu ersetzen (Bug #1466)
+     *
+     * Bis zum 13.11.2026 stand hier eine Zeile, die wortlos überschrieb. Das
+     * hielt, solange niemand einen Fehler machte, und schwieg in dem Moment,
+     * in dem es jemand tat: Im Peppermint Manager (#9887) nahm eine zweite
+     * Quelle je System die erste weg, `forSubjects()` lief leer, und vier
+     * Tests eines am selben Tag ausgerollten Vorgangs starben — ohne eine
+     * Meldung, die gesagt hätte, woran es lag.
+     *
+     * Ein Schlüssel ist die Kennung EINES Systems. Zwei Quellen mit demselben
+     * Schlüssel sind kein zu verfeinernder Fall, sondern ein falscher
+     * Zuschnitt: Welche Fragen ein System beantwortet, ist seine Eigenschaft
+     * und kein Grund für einen zweiten Eintrag.
+     *
+     * @param  bool  $ersetzen  Ausdrücklich ersetzen — für ein Produkt, das
+     *                          eine Paketquelle durch seine eigene austauscht.
+     *                          Ausdrücklich, weil die stille Ersetzung genau
+     *                          das war, was niemand bemerkte.
+     *
+     * @throws SourceKeyTaken wenn der Schlüssel belegt ist und nicht ersetzt werden soll
+     */
+    public function register(TaskSource $source, bool $ersetzen = false): void
     {
-        $this->sources[$source->key()] = $source;
+        $key = $source->key();
+
+        if (! $ersetzen && isset($this->sources[$key])) {
+            throw SourceKeyTaken::by($key, $this->sources[$key], $source);
+        }
+
+        $this->sources[$key] = $source;
     }
 
     /** @return array<string, TaskSource> */

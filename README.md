@@ -585,6 +585,20 @@ loses the capability disappears — nobody has to remember a switch. Its own
 system is never in that list, and neither is a system this one may not call, so
 the grant list is not kept twice.
 
+Asked **once per request**, not once per caller. `isAvailable()` asks the
+capability register too — the check belongs there, because time passes between
+"registered" and "asked" — and a mask needing both `forPersons()` and
+`forSubjects()` used to pay six calls per page load, each with the gateway
+timeout (20 s by default). `Sources\AnbieterMerker` holds the answer for the
+duration of ONE request, which brings that to two (Bug #1469).
+
+That is a memo, not a cache with a TTL, and the difference is the whole point:
+`GatewayClient::providers()` refuses a cache in the bridge because a newly
+connected system would appear late and a disabled one would linger. Neither
+happens here — the next request asks again. The binding is therefore `scoped()`
+and never `singleton()`: under Octane a singleton lives as long as the worker,
+which would be exactly the cache the bridge rejects, only without the TTL.
+
 One source per answering system, because each gets its own chip. Which system
 said what is content: the status words of three systems are not the same, and
 merging them under one heading would claim an equality that does not exist.

@@ -3,7 +3,6 @@
 namespace Peppermint\Tasks\Sources;
 
 use Illuminate\Support\Facades\Auth;
-use Peppermint\AiBrainBridge\Facades\AiBrain;
 use Peppermint\AiBrainBridge\Verbund\Bruecke;
 
 /**
@@ -33,9 +32,9 @@ use Peppermint\AiBrainBridge\Verbund\Bruecke;
  * fünf handgeschriebene Quellen über zwei Produkte, vier davon gleich.
  *
  * Hier fragt stattdessen das Fähigkeits-Register in Brain, WER antwortet
- * (`AiBrain::providers()`). Das eigene System steht nicht in der Antwort, und
- * nur Systeme, für die dieses hier freigeschaltet ist — die Freigabeliste wird
- * damit nicht zweimal geführt.
+ * (`AiBrain::providers()`, über den {@see AnbieterMerker}). Das eigene System
+ * steht nicht in der Antwort, und nur Systeme, für die dieses hier
+ * freigeschaltet ist — die Freigabeliste wird damit nicht zweimal geführt.
  *
  * Kommt ein Produkt dazu, erscheint seine Quelle von selbst. Verliert eines
  * die Fähigkeit, verschwindet sie — ohne dass jemand daran denken muss.
@@ -164,26 +163,19 @@ final class BrueckenSubjektquellen implements MeldetQuellenAn
     /**
      * Die Anbieter eines Vorgangs, nach Slug greifbar.
      *
-     * Ohne Slug ist eine Zeile unbrauchbar: Er ist es, mit dem der nächste
-     * Aufruf adressiert wird. Eine kaputte Zeile lässt die übrigen stehen,
-     * statt die Liste zu verwerfen.
+     * Gefragt wird über den {@see AnbieterMerker}: Beide Vorgänge hier und
+     * jedes spätere `isAvailable()` derselben Anfrage teilen sich damit EINEN
+     * Netzaufruf je Vorgang (Bug #1469). Die Antwort ist dieselbe wie vorher —
+     * der Merker hält sie nur für die Dauer dieser Anfrage fest.
+     *
+     * Aus dem Container und nicht aus dem Konstruktor, aus demselben Grund wie
+     * in {@see BrueckenSubjektquelle::isAvailable()}: Ein hier gehaltener
+     * Merker überlebte das Ende der Anfrage, wenn der Anmelder es täte.
      *
      * @return array<string, array<string, mixed>>
      */
     private function anbieterNachSlug(string $vorgang): array
     {
-        $nachSlug = [];
-
-        foreach (AiBrain::providers($vorgang) as $anbieter) {
-            $slug = isset($anbieter['slug']) ? (string) $anbieter['slug'] : '';
-
-            if ($slug === '') {
-                continue;
-            }
-
-            $nachSlug[$slug] = $anbieter;
-        }
-
-        return $nachSlug;
+        return app(AnbieterMerker::class)->anbieter($vorgang);
     }
 }

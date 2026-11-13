@@ -8,6 +8,7 @@ use Peppermint\Tasks\Kinds\KindRegistry;
 use Peppermint\Tasks\Kinds\TaskKind;
 use Peppermint\Tasks\Priority\PriorityRegistry;
 use Peppermint\Tasks\Priority\TaskPriority;
+use Peppermint\Tasks\Sources\AnbieterMerker;
 use Peppermint\Tasks\Sources\MeldetQuellenAn;
 use Peppermint\Tasks\Sources\TaskSource;
 use Peppermint\Tasks\Sources\TaskSourceRegistry;
@@ -59,6 +60,27 @@ class TasksServiceProvider extends ServiceProvider
         ));
 
         $this->app->singleton(UrgencyEngine::class);
+
+        // `scoped` und AUSDRÜCKLICH nicht `singleton` (Bug #1469).
+        //
+        // Ein Singleton lebt so lange wie der Arbeiter. Unter Octane sind das
+        // Stunden — gemessen an AI Brain selbst ein Worker von 2 h 32 min, der
+        // einen Wert von vor zweieinhalb Stunden trug. Aus dem Merker für EINE
+        // Anfrage würde damit genau der Zwischenspeicher mit Frist, den
+        // `GatewayClient::providers()` in der Brücke begründet ablehnt — nur
+        // ohne Frist: Ein neu angebundenes System erschiene verspätet, ein
+        // abgeschaltetes wirkte nach.
+        //
+        // Laravel verwirft `scoped`-Bindungen zwischen Octane-Anfragen; das
+        // ist der Zweck dieser Bindungsart und der einzige Grund, warum der
+        // Merker hier liegen darf. Dasselbe gilt für den zweiten langlebigen
+        // Prozess, den ein Produkt hat: Der Warteschlangen-Arbeiter ruft
+        // zwischen zwei Aufgaben ebenfalls `forgetScopedInstances()`
+        // (`QueueServiceProvider`).
+        //
+        // Wer daraus ein `singleton()` macht, weil es „dasselbe in schneller"
+        // aussieht, hebt die Begründung der Brücke auf.
+        $this->app->scoped(AnbieterMerker::class);
     }
 
     public function boot(): void

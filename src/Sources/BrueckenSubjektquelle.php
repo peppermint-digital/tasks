@@ -232,6 +232,12 @@ final class BrueckenSubjektquelle extends TaskSource
      * Die Prüfung steht hier und nicht nur im Registrierer, weil zwischen
      * „registriert" und „gefragt" Zeit liegt: Ein Seitenaufbau pflegt eine
      * Liste, ein Klick fragt sie ab.
+     *
+     * Das bleibt so, und der {@see AnbieterMerker} ändert daran nichts: Er
+     * merkt die Antwort nur für die Dauer EINER Anfrage. Anmeldung und Abfrage
+     * liegen in verschiedenen Anfragen — die Zeit dazwischen bleibt also
+     * genauso ungeprüft, wie dieser Absatz es verlangt. Gespart wird allein,
+     * dieselbe Frage im selben Atemzug mehrfach zu stellen (Bug #1469).
      */
     public function isAvailable(): bool
     {
@@ -239,16 +245,22 @@ final class BrueckenSubjektquelle extends TaskSource
             return false;
         }
 
+        // Den Merker zur AUFRUFZEIT holen und nicht im Konstruktor halten:
+        // Diese Quelle liegt in einem Register, das als Singleton gebunden ist
+        // — ein hier festgehaltener Merker ueberlebte damit die Anfrage, in
+        // der er entstanden ist, und waere genau der Zwischenspeicher mit
+        // Frist, den die Bruecke ablehnt. Der Container gibt je Anfrage einen
+        // frischen (`scoped`, siehe TasksServiceProvider).
+        $merker = app(AnbieterMerker::class);
+
         // Gefragt wird nur nach den Vorgaengen, die diese Quelle ueberhaupt
         // FUEHRT, und es wird beim ersten Treffer aufgehoert. Ein System, das
         // beide beantwortet — heute alle drei —, kostet damit genau einen
         // Aufruf, so viele wie vorher. Ein System, das nur einen fuehrt, wird
         // nach dem RICHTIGEN gefragt statt nach dem anderen.
         foreach ($this->gefuehrteVorgaenge() as $vorgang) {
-            foreach (AiBrain::providers($vorgang) as $anbieter) {
-                if (($anbieter['slug'] ?? null) === $this->slug) {
-                    return true;
-                }
+            if ($merker->bedient($vorgang, $this->slug)) {
+                return true;
             }
         }
 

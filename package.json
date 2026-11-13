@@ -1,6 +1,6 @@
 {
     "name": "@peppermint-digital/tasks",
-    "version": "0.15.0",
+    "version": "0.15.1",
     "description": "Die JS-Seite des Aufgabenpakets — Bauteile, die mehr als ein Produkt braucht.",
     "type": "module",
     "main": "./dist/index.js",

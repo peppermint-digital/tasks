@@ -147,6 +147,30 @@ class TaskSourceRegistry
      * `RemoteTaskSystem` says what happens to those: "A second rights list
      * here would age without anyone noticing it had."
      *
+     * ## This pair has to GET a caller, and the mirror is the warning
+     *
+     * Measured on 16.11.2026 across all five repositories (manager, CRM,
+     * Verwaltung, AI Brain, this package): `writable()` and `writableFor()`
+     * have **no caller at all** outside this package's own tests. The
+     * reasoning above is theirs, and nothing in the house has taken them up on
+     * it.
+     *
+     * Worse, the shape they exist to spare is being written by hand next door.
+     * The Manager rebuilds exactly this pair twice for the calendar's half:
+     * `$source instanceof WritableEventSource && $source->isWritable()`
+     * (`app/Http/Controllers/CalendarEventController.php:246`) and
+     * `method_exists($quelle, 'isWritable') && $quelle->isWritable()` (`:1610`).
+     * So the sentence "whoever repeats the check at every control eventually
+     * forgets it somewhere" is not a worry about the future — it is a
+     * description of the present.
+     *
+     * The mirror is therefore deliberate AND on probation. The planning mask
+     * of step 4 (#9898) is the one caller this pair is for, and it asks here
+     * and nowhere else. **If that mask ships without calling it, these two
+     * methods should be deleted rather than kept** — an unused convenience in
+     * a shared package is not neutral: it reads as the sanctioned way while
+     * every product quietly does it by hand, and then the two drift.
+     *
      * @return array<string, PlansForeignTasks>
      */
     public function plannable(): array

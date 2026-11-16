@@ -662,6 +662,73 @@ which is the one answer that cannot be told apart from a real empty result.
 Called anyway, the default implementation throws. Loud in development beats
 wrong in production.
 
+### Planning time on a foreign task
+
+```php
+// A mask asks the registry, never a source directly.
+foreach ($registry->plannableFor(PlansForeignTasks::CAPABILITY_CREATE) as $source) { /* … */ }
+
+$block = $source->plan(auth()->id(), $foreignTask->id, new TimeSpan(
+    '2026-11-17T09:00:00+01:00',
+    '2026-11-17T11:00:00+01:00',
+));
+```
+
+Three capabilities, not one — `tasks.schedule.create`, `.update`, `.delete`.
+The Verwaltung is why: it has `UpdateTaskTool` and `DeleteTaskTool` and no
+`CreateTaskTool`, so a single switch would make it either entirely plannable or
+not at all. `update` IS the move; a block has beginning, end and person and
+nothing else to argue about, which is the same decision
+`WritableEventSource::move()` takes in the calendar.
+
+**`PlansForeignTasks` is an additional contract, asked by `instanceof` — not
+three methods on `WritableTaskSource`.** Adding abstract methods breaks
+implementations, and `WritableTaskSource` has one in AI Brain. It is also the
+honest shape: writing a task and planning time on one are two facts about a
+product, and they come apart in both directions.
+
+The price is that an optional contract **goes missing silently** — it breaks
+nothing, it is simply not there, and the mask shows a system list whose next
+step is absent. So the contract ships with a guard test that walks every
+registered source and every source class the package ships
+(`tests/Feature/PlanbareQuellenTest.php`). Without it the decision would be an
+opinion.
+
+**The block lives where the task lives**, never here. It has to: a
+`PlannedBlockProfile` points at a local Eloquent model, and a foreign task has
+neither model nor row in this database. That placement is also what makes the
+hard question disappear — when the task is deleted over there, the block goes
+or stays by the owning system's own rule, in its own database. The contract
+keeps the shape by not touching it.
+
+What travels out is in `TimeSpan`, and the interesting part is what is **not**:
+
+| not sent | because |
+|---|---|
+| the person | she travels on the comm layer; an id in the argument would be the right to write into somebody else's calendar |
+| the kind | every system has exactly one task-block kind and takes its own |
+| title, description, project, category | the other system derives them from its own task and knows them better |
+| `all_day` | planned work is a span of hours — that is the whole difference from a deadline |
+| a local event id | the thing travels over the owning system plus its id there |
+
+`TimeSpan` refuses a point in time **without a zone**, at construction. Twice
+measured and twice expensive: first UTC instead of the display zone — two hours
+too early in every event created from outside — then the wrong lesson drawn from
+it. A naked local time is the kind of statement two systems silently disagree
+about by two hours.
+
+What comes back is `PlannedBlock` — the **other** system's version, read from
+the event shape all three products already give out, in the same spirit as
+`WritableTaskSource::create()`. An answer without `id`, `starts_at` or `ends_at`
+throws with `tool_failed`: a block without hours would pass every type check and
+draw in the grid as something a person reads as "planned".
+
+Who may touch a block is decided by the **answering** system's policy, over the
+acting person. This package keeps no second rights list — `plannable()`
+therefore has no `isWritable()` counterpart. The one bolt that does sit here is
+fail-closed on identity: planning for anybody but the logged-in person does not
+happen, and it throws rather than quietly doing nothing.
+
 ## Adopting an existing table
 
 A package that only runs on fresh tables cannot take on a grown product — and

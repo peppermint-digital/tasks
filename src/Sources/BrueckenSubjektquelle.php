@@ -57,8 +57,23 @@ use Peppermint\Tasks\Exceptions\ForeignSourceFailed;
  * tests of #9815 died without a word (Bug #1466 closed that silence).
  *
  * A system is ONE entry, and which questions it answers is a property of it.
+ *
+ * ## Und die SCHREIBENDE Haelfte, seit dem 16.11.2026 (#9898)
+ *
+ * Bis dahin war diese Klasse rein lesend, und damit der ganze Verbund: Die
+ * schreibende Haelfte eines Aufgaben-Vertrags gab es nur in AI Brain
+ * (`app/Tasks/Sources/ConnectedProductTaskSource.php`, `extends
+ * WritableTaskSource`) — und das ist die Nabe, nicht ein Produkt. **Ueber die
+ * Bruecke konnte kein Produkt in ein anderes schreiben.**
+ *
+ * Eine Maske, die „welches System, dann welche Aufgabe" fragt, endete also an
+ * der Stelle, an der sie den Zeitraum hinschreiben muesste. Deshalb steht hier
+ * jetzt {@see PlansForeignTasks} — ein ZUSAETZLICHER Vertrag, per `instanceof`
+ * gefragt, und ausdruecklich keine Erweiterung von {@see WritableTaskSource}:
+ * Dessen abstrakte Methoden zu vermehren braeche jede Umsetzung, und AI Brain
+ * hat eine. Die Begruendung in ganzer Laenge steht am Vertrag.
  */
-final class BrueckenSubjektquelle extends TaskSource
+final class BrueckenSubjektquelle extends TaskSource implements PlansForeignTasks
 {
     /** Der Vorgang, den die Gegenseite fuer die Datensatz-Frage anbietet. */
     public const CAPABILITY = 'tasks.subject.list';
@@ -278,6 +293,186 @@ final class BrueckenSubjektquelle extends TaskSource
             $this->subjekte ? self::CAPABILITY : null,
             $this->personen ? self::CAPABILITY_PERSON : null,
         ]));
+    }
+
+    /**
+     * Beantwortet dieses System einen der drei Planungs-Vorgänge?
+     *
+     * Gemessen am Fähigkeits-Register, nicht am Konstruktor — und damit
+     * anders als {@see supportsPerson()} und {@see supportsSubjects()}, die
+     * Werte sind. Der Unterschied hat einen Grund und ist keiner aus
+     * Bequemlichkeit:
+     *
+     * Jene beiden stehen in der Systemliste, die eine Maske beim ZEICHNEN
+     * braucht — der `TaskSourcePicker` im Kalenderpaket hat deshalb
+     * absichtlich keinen Lade- und keinen Ausfallzustand. Die Planung steht
+     * nicht dort: Sie ist der SCHRITT NACH der Auswahl, und an ihm hängt kein
+     * Versprechen über eine Liste, die ohne Netz dastehen muss.
+     *
+     * Umgekehrt kostet es nichts: Der {@see AnbieterMerker} hält die Antwort
+     * für die Dauer EINER Anfrage, also ein Netzaufruf je Vorgang je
+     * Seitenaufbau — und nur, wenn überhaupt jemand nach der Planung fragt.
+     * Drei weitere Konstruktorwerte hiessen drei weitere Abfragen im Anmelder,
+     * bei jedem Seitenaufbau, auch wenn niemand plant (Bug #1469 zählt nach,
+     * was das kostet).
+     *
+     * Und es ist dieselbe Prüfung, die {@see isAvailable()} schon macht,
+     * mitsamt deren Begründung: Zwischen „registriert" und „gefragt" liegt
+     * Zeit, und eine entzogene Freigabe soll den Knopf von selbst wegnehmen.
+     *
+     * Ein Vorgang, der keiner der drei ist, bekommt hier `false` und keinen
+     * Wurf — laut wird die eine Stelle, die eine Maske fragt
+     * ({@see TaskSourceRegistry::plannableFor()}). Zwei Stellen, die über
+     * denselben Tippfehler werfen, sind eine zu viel.
+     */
+    public function offers(string $capability): bool
+    {
+        if (! in_array($capability, self::CAPABILITIES, true)) {
+            return false;
+        }
+
+        if (! Bruecke::eingerichtet()) {
+            return false;
+        }
+
+        // Zur Aufrufzeit geholt und nicht im Konstruktor gehalten — siehe die
+        // Begruendung an {@see isAvailable()}: Diese Quelle liegt in einem
+        // Register, das als Singleton gebunden ist.
+        return app(AnbieterMerker::class)->bedient($capability, $this->slug);
+    }
+
+    /**
+     * Plant Zeit an einer Aufgabe des anderen Systems ein.
+     *
+     * Hin gehen die Kennung der Aufgabe DRÜBEN und der Zeitraum, und sonst
+     * nichts — was nicht mitgeht und warum, steht an {@see TimeSpan}. Zurück
+     * kommt die Fassung des anderen Systems.
+     */
+    public function plan(int $userId, string|int $taskId, TimeSpan $span): PlannedBlock
+    {
+        return PlannedBlock::fromRow(
+            $this->key(),
+            self::CAPABILITY_CREATE,
+            $this->schreibend($userId, self::CAPABILITY_CREATE, [
+                'task_id' => (string) $taskId,
+            ] + $span->toArray()),
+        );
+    }
+
+    /**
+     * Verschiebt einen Block, den es drüben schon gibt.
+     *
+     * Die Kennung ist die des BLOCKS in seinem eigenen System. Eine lokale
+     * Terminkennung gibt es hier nicht und wäre drüben nicht adressierbar.
+     */
+    public function move(int $userId, string|int $blockId, TimeSpan $span): PlannedBlock
+    {
+        return PlannedBlock::fromRow(
+            $this->key(),
+            self::CAPABILITY_UPDATE,
+            $this->schreibend($userId, self::CAPABILITY_UPDATE, [
+                'block_id' => (string) $blockId,
+            ] + $span->toArray()),
+        );
+    }
+
+    /**
+     * Gibt die geplante Zeit zurück.
+     *
+     * Ohne Rückgabe, wie `WritableTaskSource::delete()`: Was es nicht mehr
+     * gibt, kann nichts zurückgeben. Die Antwort wird trotzdem gelesen — nur
+     * eben auf „hat es geklappt" und nicht auf eine Zeile.
+     */
+    public function unplan(int $userId, string|int $blockId): void
+    {
+        $this->schreibend($userId, self::CAPABILITY_DELETE, [
+            'block_id' => (string) $blockId,
+        ]);
+    }
+
+    /**
+     * Ein schreibender Vorgang über die Brücke — die eine Stelle für alle drei.
+     *
+     * ## Warum die fremde Person hier abgewiesen wird und nicht drüben
+     *
+     * Dieselbe Sperre wie in {@see tasks()}, aus demselben gemessenen Grund:
+     * Ein Aufruf, dessen Identität unterwegs verlorengeht, macht die Antwort
+     * WEITER statt enger (Bug #657 im Kalender). Beim Lesen hiesse das,
+     * jemandem fremde Aufgaben zu zeigen; beim Planen hiesse es, einem anderen
+     * Menschen Zeit in den Kalender zu schreiben — und genau das verweigert
+     * die Weboberfläche daneben auch
+     * (`CreateCalendarEventTool.php:27-34` in der Verwaltung).
+     *
+     * Beim Lesen ist die Antwort darauf eine leere Liste. Hier nicht: Ein
+     * Schreibweg, der nichts tut und nichts sagt, hinterlässt einen Block, den
+     * jemand ANGELEGT ZU HABEN GLAUBT und der nirgends existiert
+     * ({@see ForeignSourceFailed}).
+     *
+     * `not_allowed` und keine fünfte Fehlerklasse. Die Ablehnung steht zwar
+     * hier und nicht drüben, aber die vier Namen sagen, was ein Mensch als
+     * nächstes tun kann, und „es fehlt eine Erlaubnis" ist die richtige
+     * Auskunft. Dazu passt, dass `mightPassByItself()` dafür falsch ist:
+     * Warten hilft nicht.
+     *
+     * ## Warum die Antwort als nackte Nutzlast gelesen wird
+     *
+     * Weil das die Form ist, die 15 der 18 Kalender-Werkzeuge in den drei
+     * Produkten haben, und die zugesagte für die drei neuen (Vorschlag #9898,
+     * Abschnitt 6). Die drei Manager-Werkzeuge antworten heute mit einer Hülle
+     * und einem `status`, dessen Wortschatz je Werkzeug anders ist —
+     * `confirmation_required` heisst „nichts getan" und sieht aus wie Erfolg.
+     *
+     * Ein inneres `ok` wird deshalb NICHT gelesen: Keines der 18 führt eines,
+     * und wer einem Aufrufer sagt „lies es selbst", schickt ihn an eine
+     * Stelle, an der nichts steht. Gelesen wird die äussere Zusage über
+     * {@see RemoteResult} — streng, nur ein echtes `true` gilt.
+     *
+     * Hält ein Produkt die Form nicht ein, kommt die Nutzlast ohne `id`,
+     * `starts_at` oder `ends_at` an, und {@see PlannedBlock::fromRow()} wirft
+     * mit `tool_failed`. Laut, nicht lautlos — das ist der Zweck dieser
+     * Arbeitsteilung.
+     *
+     * @param  array<string, mixed>  $argumente
+     * @return array<string, mixed> die nackte Nutzlast, bei `delete` leer
+     *
+     * @throws ForeignSourceFailed
+     */
+    private function schreibend(int $userId, string $capability, array $argumente): array
+    {
+        if ($userId !== (int) (Auth::id() ?? 0)) {
+            throw new ForeignSourceFailed(
+                'In '.$this->label().' wird nur die eigene Zeit geplant.',
+                $this->key(),
+                $capability,
+                null,
+                SourceFailure::NOT_ALLOWED,
+            );
+        }
+
+        $ergebnis = RemoteResult::fromArray(
+            AiBrain::gateway($capability, $argumente, $this->slug)
+        );
+
+        if (! $ergebnis->ok) {
+            // Die Fehlerklasse UND der Text reisen mit, wie auf den lesenden
+            // Wegen: „nicht freigeschaltet" ist etwas anderes als „antwortet
+            // nicht", und der Unterschied entscheidet, was ein Mensch als
+            // naechstes tun kann.
+            throw new ForeignSourceFailed(
+                'Der Zeitblock in '.$this->label().' ist nicht zustande gekommen: '
+                    .($ergebnis->message ?? 'ohne Angabe der Gegenstelle'),
+                $this->key(),
+                $capability,
+                null,
+                $ergebnis->error,
+            );
+        }
+
+        // `data` als EINE Zeile und nicht ueber `rows()`: Dort wird eine LISTE
+        // erwartet, und `array_filter(..., 'is_array')` liesse von einer
+        // einzelnen Zeile genau die Skalare weg — heraus kaeme eine leere
+        // Zeile, die wie eine Antwort aussieht.
+        return $ergebnis->data ?? [];
     }
 
     /**

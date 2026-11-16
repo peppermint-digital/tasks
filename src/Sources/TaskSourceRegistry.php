@@ -3,6 +3,7 @@
 namespace Peppermint\Tasks\Sources;
 
 use Illuminate\Support\Facades\Log;
+use InvalidArgumentException;
 use Peppermint\Tasks\Exceptions\ForeignSourceFailed;
 use Peppermint\Tasks\Exceptions\SourceKeyTaken;
 use Throwable;
@@ -117,6 +118,77 @@ class TaskSourceRegistry
         return array_filter(
             $this->writable(),
             fn (TaskSource $source) => $source instanceof WritableTaskSource && $source->supports($operation),
+        );
+    }
+
+    /**
+     * The sources you may plan time in at all.
+     *
+     * The mirror of `writable()`, and deliberately so: an interface asks for
+     * this instead of checking itself, because whoever repeats the check at
+     * every control eventually forgets it somewhere.
+     *
+     * Built on `available()` for the same reason: a product nobody has access
+     * to is not offered for planning either. And that is the stricter reading
+     * it looks like — `isAvailable()` measures the READING capabilities over
+     * the bridge, so a system appears here only if its tasks can be seen at
+     * all. Which is correct: one plans time on a task one can see.
+     *
+     * ## Why there is no `isWritable()` equivalent in this pair
+     *
+     * `writable()` asks two questions — is the source writable by
+     * construction, and may this person write there right now. Here the second
+     * one has no place: whether somebody may touch a block is decided by the
+     * ANSWERING system's policy, over the acting person the comm layer carries
+     * along (`denyUnlessAllowed($request, 'update', $ticket)` in the
+     * Verwaltung is the running precedent).
+     *
+     * A switch here would be the beginning of a second rights list, and
+     * `RemoteTaskSystem` says what happens to those: "A second rights list
+     * here would age without anyone noticing it had."
+     *
+     * @return array<string, PlansForeignTasks>
+     */
+    public function plannable(): array
+    {
+        return array_filter(
+            $this->available(),
+            fn (TaskSource $source) => $source instanceof PlansForeignTasks,
+        );
+    }
+
+    /**
+     * The sources you may perform THIS planning operation in.
+     *
+     * Narrower than `plannable()`, and the same point as
+     * `writableFor()`: a product can hold blocks and still not offer every
+     * operation. The Verwaltung is the measured case — it has `UpdateTaskTool`
+     * and `DeleteTaskTool` and no `CreateTaskTool`.
+     *
+     * An unknown operation THROWS rather than returning an empty list. An
+     * empty list would be the wrong answer in the one shape that cannot be
+     * seen: a mask asking for a mistyped capability would show no systems at
+     * all, which reads as "nobody offers this" — a claim, not an absence. Same
+     * reasoning as the type check in `TasksServiceProvider::buildSources()`.
+     *
+     * @param  string  $capability  one of {@see PlansForeignTasks::CAPABILITIES}
+     * @return array<string, PlansForeignTasks>
+     *
+     * @throws InvalidArgumentException for anything that is not one of the three
+     */
+    public function plannableFor(string $capability): array
+    {
+        if (! in_array($capability, PlansForeignTasks::CAPABILITIES, true)) {
+            throw new InvalidArgumentException(
+                "[{$capability}] is not one of the planning capabilities: "
+                .implode(', ', PlansForeignTasks::CAPABILITIES).'.'
+            );
+        }
+
+        return array_filter(
+            $this->plannable(),
+            fn (TaskSource $source) => $source instanceof PlansForeignTasks
+                && $source->offers($capability),
         );
     }
 

@@ -155,14 +155,31 @@ class TaskSourceRegistry
      * reasoning above is theirs, and nothing in the house has taken them up on
      * it.
      *
-     * Worse, the shape they exist to spare is being written by hand next door.
-     * The Manager rebuilds exactly this pair twice for the calendar's half:
-     * `$source instanceof WritableEventSource && $source->isWritable()`
-     * (`app/Http/Controllers/CalendarEventController.php:246`) and
-     * `method_exists($quelle, 'isWritable') && $quelle->isWritable()` (`:1610`).
+     * Worse, the shape they exist to spare is being written by hand next door,
+     * and the calendar package has the same story one package over. Its
+     * `EventSourceRegistry::writable()` carries this very argument in its
+     * docblock, and the Manager's own fix commit measured the consequence
+     * (`66bbf043`, 12.11.2026): "Gerufen hat es NIEMAND: null Treffer ueber
+     * Paket, drei Produkte und alle Testreihen. Daneben filterten drei
+     * Handkopien selbst mit `method_exists()`." Three — character-identical in
+     * Manager, CRM and Verwaltung; Bug #1417 had named two.
+     *
      * So the sentence "whoever repeats the check at every control eventually
-     * forgets it somewhere" is not a worry about the future — it is a
-     * description of the present.
+     * forgets it somewhere" is not a worry about the future. It has already
+     * happened three times, to the method that says it.
+     *
+     * And the attempt to end it did not hold: `66bbf043` pulled the answer back
+     * into the package, and `c9b3348f` reverted it **ten minutes later** —
+     * because it needed an `EventSourceRegistry::ziele()` that was on the
+     * calendar's main and not pushed, so the pinned state made it red. The
+     * Manager's shipping tree therefore still runs the hand-copy
+     * (`app/Http/Controllers/CalendarEventController.php:1610`, called from
+     * `:487`; `->ziele(` has zero occurrences in `app/`). Measured there on
+     * 16.11.2026 at `c9b3348f`.
+     *
+     * Whoever reads this and goes looking: measure the tree, not the fix. Both
+     * commits are from the same hour, and the fix reads like the current state
+     * while the revert is what ships.
      *
      * The mirror is therefore deliberate AND on probation. The planning mask
      * of step 4 (#9898) is the one caller this pair is for, and it asks here

@@ -260,12 +260,18 @@ final class BrueckenSubjektquelle extends TaskSource implements PlansForeignTask
             return false;
         }
 
-        // Den Merker zur AUFRUFZEIT holen und nicht im Konstruktor halten:
-        // Diese Quelle liegt in einem Register, das als Singleton gebunden ist
-        // — ein hier festgehaltener Merker ueberlebte damit die Anfrage, in
-        // der er entstanden ist, und waere genau der Zwischenspeicher mit
-        // Frist, den die Bruecke ablehnt. Der Container gibt je Anfrage einen
-        // frischen (`scoped`, siehe TasksServiceProvider).
+        // Den Merker zur AUFRUFZEIT holen und nicht im Konstruktor halten.
+        //
+        // Bis zum 17.11.2026 stand hier als Grund, das Register sei ein
+        // Singleton und ein festgehaltener Merker ueberlebte deshalb seine
+        // Anfrage. Das Register ist seit Bug #1479 `scoped`, der Griff bleibt
+        // aber derselbe — und der Grund ist jetzt der allgemeinere: Die
+        // Lebensdauer des Merkers darf nicht davon abhaengen, wie lange der
+        // lebt, der ihn HAELT. Wer diese Quelle in etwas Langlebiges legt — ein
+        // Produkt, das das Register in einen eigenen `singleton()` spritzt —,
+        // bekaeme sonst lautlos den Zwischenspeicher mit Frist zurueck, den die
+        // Bruecke ablehnt. Der Container gibt je Anfrage einen frischen
+        // (`scoped`, siehe TasksServiceProvider).
         $merker = app(AnbieterMerker::class);
 
         // Gefragt wird nur nach den Vorgaengen, die diese Quelle ueberhaupt
@@ -336,8 +342,8 @@ final class BrueckenSubjektquelle extends TaskSource implements PlansForeignTask
         }
 
         // Zur Aufrufzeit geholt und nicht im Konstruktor gehalten — siehe die
-        // Begruendung an {@see isAvailable()}: Diese Quelle liegt in einem
-        // Register, das als Singleton gebunden ist.
+        // Begruendung an {@see isAvailable()}: Die Lebensdauer des Merkers darf
+        // nicht an der des Halters haengen.
         return app(AnbieterMerker::class)->bedient($capability, $this->slug);
     }
 

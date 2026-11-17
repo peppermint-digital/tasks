@@ -54,7 +54,10 @@ class TasksServiceProvider extends ServiceProvider
             'urgency factor',
         ));
 
-        $this->app->singleton(TaskSourceRegistry::class, fn ($app) => $this->buildSources(
+        // `scoped` und AUSDRUECKLICH nicht `singleton` (Bug #1479) — die
+        // Begruendung steht am Docblock von `buildSources()`, weil sie dort
+        // zusammen mit der Kostenfrage gelesen werden muss.
+        $this->app->scoped(TaskSourceRegistry::class, fn ($app) => $this->buildSources(
             new TaskSourceRegistry,
             (array) $app['config']->get('tasks.sources', []),
         ));
@@ -171,9 +174,42 @@ class TasksServiceProvider extends ServiceProvider
      * Faehigkeits-Register in AI Brain.
      *
      * Der Aufruf geht dabei ueber die Leitung — getragen wird das davon, dass
-     * dieses Register ein Singleton ist und LAZY aufgeloest wird: Wer keine
-     * Quellen braucht, zahlt nichts. Deshalb steht die Anmeldung hier und
-     * nicht in `boot()`, das bei jedem Konsolenbefehl laeuft.
+     * dieses Register LAZY aufgeloest wird: Wer keine Quellen braucht, zahlt
+     * nichts. Deshalb steht die Anmeldung hier und nicht in `boot()`, das bei
+     * jedem Konsolenbefehl laeuft.
+     *
+     * ## `scoped` und nicht `singleton` (Bug #1479)
+     *
+     * Bis zum 17.11.2026 stand hier `singleton()`, begruendet mit genau der
+     * Ersparnis im Absatz darueber. Die Begruendung war richtig und hat nur
+     * den AUFWAND betrachtet, nicht den INHALT: Was angemeldet wird, haengt am
+     * angemeldeten Nutzer, denn {@see Sources\BrueckenSubjektquellen::melden()}
+     * fragt erst die Wache und liefert ohne Person null Quellen.
+     *
+     * Unter PHP-FPM war das folgenlos — der Container wird je Anfrage neu
+     * gebaut. Unter Octane lebt ein Singleton so lange wie der Arbeiter, und
+     * dann gilt:
+     *
+     * | Reihenfolge im selben Arbeiter | Folge |
+     * |---|---|
+     * | erst ohne Anmeldung, dann mit | das Register bleibt LEER, fuer alle folgenden Anfragen dieses Arbeiters |
+     * | erst Person A, dann Person B   | B sieht die Liste, die fuer A gebaut wurde |
+     *
+     * Beides lautlos. Fuer eine Maske heisst das „dieses System gibt es nicht"
+     * statt „es antwortet gerade nicht". Es ist ein RICHTIGKEITSfehler und
+     * kein Vertraulichkeitsfehler: Die Quellen tragen Slug, Beschriftung und
+     * Farbe, und die Aufgaben werden weiterhin je `userId` geholt.
+     *
+     * `scoped()` ist genau dafuer da — Laravel verwirft diese Bindungen
+     * zwischen Octane-Anfragen (`forgetScopedInstances()`) und ebenso zwischen
+     * zwei Aufgaben des Warteschlangen-Arbeiters. Dieselbe Bindungsart wie beim
+     * {@see Sources\AnbieterMerker} in `register()`, und aus derselben
+     * Familie von Gruenden.
+     *
+     * Die Kostenfrage bleibt damit beantwortet, nur anders: Der Anmelder fragt
+     * je Anfrage neu ueber die Leitung — zusammen mit dem Merker ist das genau
+     * EIN Aufruf je Vorgang und Anfrage, und nicht je Aufloesung des Registers.
+     * Festgenagelt in `tests/Feature/RegisterLebensdauerTest.php`.
      *
      * Ein Fehlschlag beim Fragen ist eine leere Liste und keine Ausnahme (so
      * sagt es `AiBrain::providers()` zu) — die eigenen Quellen bleiben.

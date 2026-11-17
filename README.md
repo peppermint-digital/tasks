@@ -569,12 +569,27 @@ because how many there are is only known at runtime. The alternative was a thin
 subclass per neighbour: three products with two neighbours each is six classes
 doing the same thing.
 
-The register is a lazily resolved singleton, and the registrar asks the guard
-**before** the wire: a console command, a queue job and an anonymous request get
-an empty list without any HTTP call. Not out of thrift — without a person there
-is nobody whose foreign tasks are meant. Same order as
+The register is resolved lazily, and the registrar asks the guard **before** the
+wire: a console command, a queue job and an anonymous request get an empty list
+without any HTTP call. Not out of thrift — without a person there is nobody
+whose foreign tasks are meant. Same order as
 `Peppermint\Calendar\Sources\BrainCalendarSources`; the guard is nameable,
 because a product can have several (`new BrueckenSubjektquellen([], 'web')`).
+
+That guard is also what makes the register's **content user-dependent**, and so
+the binding is `scoped()` and not `singleton()` (Bug #1479, fixed 17/11/2026).
+A singleton lives as long as the worker under Octane, and then a first request
+without a login freezes the empty list for every later request of that worker,
+while a change of person shows the second one the list built for the first —
+both silently. It is a correctness bug, not a confidentiality one: a source
+carries slug, label and colour, and tasks are still fetched per `userId`. Under
+PHP-FPM it never surfaced, because the container is rebuilt per request.
+
+The cost that `singleton()` was chosen for is still answered, just differently:
+the registrar asks over the wire once per request instead of once per worker,
+which together with the memo is exactly **one call per capability per request**
+— not one per resolution of the register. `tests/Feature/RegisterLebensdauerTest.php`
+nails all three down: the trap, the change of person, and the count.
 
 A failure asking is an empty list, not an exception: the product's own sources
 stay.
@@ -595,9 +610,10 @@ duration of ONE request, which brings that to two (Bug #1469).
 That is a memo, not a cache with a TTL, and the difference is the whole point:
 `GatewayClient::providers()` refuses a cache in the bridge because a newly
 connected system would appear late and a disabled one would linger. Neither
-happens here — the next request asks again. The binding is therefore `scoped()`
-and never `singleton()`: under Octane a singleton lives as long as the worker,
-which would be exactly the cache the bridge rejects, only without the TTL.
+happens here — the next request asks again. The memo's binding is therefore
+`scoped()` and never `singleton()` too: under Octane a singleton lives as long
+as the worker, which would be exactly the cache the bridge rejects, only
+without the TTL.
 
 One source per answering system, because each gets its own chip. Which system
 said what is content: the status words of three systems are not the same, and

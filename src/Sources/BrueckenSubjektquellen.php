@@ -50,6 +50,15 @@ use Peppermint\AiBrainBridge\Verbund\Bruecke;
  * von dort übernommen. Die Wache ist angebbar, weil ein Produkt mehrere haben
  * kann; die Verwaltung nennt ausdrücklich `web`.
  *
+ * **Damit hängt das Ergebnis dieser Klasse am angemeldeten Nutzer** — und das
+ * ist der Grund, warum das Register im {@see \Peppermint\Tasks\TasksServiceProvider}
+ * `scoped()` gebunden ist und nicht `singleton()` (Bug #1479). Ein Singleton
+ * lebt unter Octane so lange wie der Arbeiter: Die erste Anfrage ohne
+ * Anmeldung fröre die leere Liste für alle folgenden ein, und nach einem
+ * Personenwechsel sähe die zweite Person die Liste der ersten. Beides
+ * lautlos. Wer hier etwas ändert, prüfe mit:
+ * `tests/Feature/RegisterLebensdauerTest.php`.
+ *
  * ## Warum das über die Konfiguration läuft und nicht über `extend()`
  *
  * Der Kalender wird im `AppServiceProvider` des Produkts verdrahtet, mit

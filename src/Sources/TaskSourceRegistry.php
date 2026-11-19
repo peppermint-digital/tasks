@@ -49,6 +49,67 @@ class TaskSourceRegistry
         $this->sources[$key] = $source;
     }
 
+    /**
+     * Ausfälle beim ANMELDEN, getrennt nach der Frage, deren Liste dadurch
+     * unvollständig ist (Bug #1513).
+     *
+     * @var array{persons: array<string, SourceFailure>, subjects: array<string, SourceFailure>}
+     */
+    protected array $registrationFailures = ['persons' => [], 'subjects' => []];
+
+    /**
+     * Festhalten, dass beim Anmelden etwas nicht gefragt werden konnte.
+     *
+     * ## Warum das Register das wissen muss (Bug #1513)
+     *
+     * Eine Quelle, die nie angemeldet wurde, fehlt in jeder Liste, ohne eine
+     * Spur zu hinterlassen. Gemessen am 19.11.2026 mit dem echten Client: Ist
+     * die Nabe beim Aufbau weg, steht keine Brückenquelle im Register — und
+     * `harvest()` meldete daraufhin `complete`, mit leerem `failures`. Das ist
+     * nicht bloß ein fehlender Grund, sondern eine falsche Behauptung: „das
+     * ist alles", wo niemand gefragt werden konnte.
+     *
+     * Wer anmeldet (heute {@see BrueckenSubjektquellen::melden()}), meldet
+     * deshalb hier, WAS nicht gefragt werden konnte. `harvest()` und
+     * `collectForSubject()` tragen es in ihre Antwort, und `complete()` ist
+     * dann falsch — so wie bei einer Quelle, die beim Ernten nicht antwortet.
+     *
+     * ## Nach Frage getrennt
+     *
+     * Die Personen-Liste und die Datensatz-Liste werden aus verschiedenen
+     * Vorgängen gefüllt. Fällt nur einer aus, ist auch nur eine der beiden
+     * Antworten unvollständig — und nur die darf es sagen. Ein Warnhinweis
+     * an der Antwort, die vollständig ist, wäre die umgekehrte Lüge.
+     *
+     * Nicht betroffen sind `all()`, `available()`, `plannable()` und die
+     * übrigen Listen: Sie antworten weiter, was angemeldet IST. Der Grund,
+     * warum etwas fehlt, gehört an die Antwort, die eine Maske als vollständig
+     * lesen könnte — und das ist die Ernte.
+     *
+     * @param  string  $for  `persons` oder `subjects`
+     */
+    public function failedToRegister(SourceFailure $failure, string $for): void
+    {
+        if (! array_key_exists($for, $this->registrationFailures)) {
+            throw new InvalidArgumentException("[{$for}] is neither 'persons' nor 'subjects'.");
+        }
+
+        // Je Schlüssel EINE Meldung: Der erste Grund bleibt stehen. Zwei
+        // Meldungen derselben Stelle für dieselbe Liste sagten nichts Neues.
+        $this->registrationFailures[$for][$failure->sourceKey] ??= $failure;
+    }
+
+    /**
+     * Was beim Anmelden nicht gefragt werden konnte.
+     *
+     * @param  string  $for  `persons` oder `subjects`
+     * @return array<string, SourceFailure>
+     */
+    public function registrationFailures(string $for): array
+    {
+        return $this->registrationFailures[$for] ?? [];
+    }
+
     /** @return array<string, TaskSource> */
     public function all(): array
     {
@@ -335,7 +396,7 @@ class TaskSourceRegistry
             }
         }
 
-        return new TaskHarvest($tasks, $ok, $failures);
+        return new TaskHarvest($tasks, $ok, $this->withRegistrationFailures($failures, 'subjects', $skip));
     }
 
     /**
@@ -429,7 +490,29 @@ class TaskSourceRegistry
             }
         }
 
-        return new TaskHarvest($tasks, $ok, $failures);
+        return new TaskHarvest($tasks, $ok, $this->withRegistrationFailures($failures, 'persons', $skip));
+    }
+
+    /**
+     * Die Ausfälle beim Anmelden dazulegen (Bug #1513).
+     *
+     * Was ausdrücklich abgewählt ist, bleibt draußen — dieselbe Regel wie bei
+     * den Quellen: Niemand wartet auf diese Antwort. Ein Ausfall beim Ernten
+     * desselben Schlüssels geht vor; er ist der jüngere Befund.
+     *
+     * @param  array<string, SourceFailure>  $failures
+     * @param  array<int, string>  $skip
+     * @return array<string, SourceFailure>
+     */
+    protected function withRegistrationFailures(array $failures, string $for, array $skip): array
+    {
+        foreach ($this->registrationFailures($for) as $key => $failure) {
+            if (! in_array($key, $skip, true)) {
+                $failures[$key] ??= $failure;
+            }
+        }
+
+        return $failures;
     }
 
     /**

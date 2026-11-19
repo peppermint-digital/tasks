@@ -69,6 +69,14 @@ final class AnbieterMerker
     private array $gemerkt = [];
 
     /**
+     * Vorgang => warum die Frage nicht beantwortet wurde. Fehlt ein Vorgang
+     * hier, hat Brain geantwortet — auch wenn die Liste leer war.
+     *
+     * @var array<string, array{error: string|null, message: string}>
+     */
+    private array $ausfaelle = [];
+
+    /**
      * Die Anbieter eines Vorgangs, nach Slug greifbar.
      *
      * @return array<string, array<string, mixed>>
@@ -81,6 +89,27 @@ final class AnbieterMerker
         // der Fall, in dem es weh tut — jeden weiteren Aufruf die volle
         // Zeitgrenze.
         return $this->gemerkt[$vorgang] ??= $this->holen($vorgang);
+    }
+
+    /**
+     * Warum die Anbieter dieses Vorgangs nicht kamen — oder null, wenn Brain
+     * geantwortet hat (Bug #1513).
+     *
+     * Null heisst ausdrücklich NICHT „es gibt welche": Eine leere Liste mit
+     * null hier ist die echte Auskunft „niemand bedient das". Eine leere Liste
+     * MIT Grund ist keine Auskunft, sondern ein Ausfall — und genau diese
+     * beiden sahen bis zum 19.11.2026 gleich aus.
+     *
+     * Fragt, falls noch nicht gefragt wurde: Der Grund gehört zur Antwort und
+     * wird mit ihr zusammen gemerkt, nicht getrennt geholt.
+     *
+     * @return array{error: string|null, message: string}|null
+     */
+    public function ausfall(string $vorgang): ?array
+    {
+        $this->anbieter($vorgang);
+
+        return $this->ausfaelle[$vorgang] ?? null;
     }
 
     /** Beantwortet DIESES System den Vorgang? */
@@ -111,7 +140,7 @@ final class AnbieterMerker
     {
         $nachSlug = [];
 
-        foreach (AiBrain::providers($vorgang) as $anbieter) {
+        foreach ($this->fragen($vorgang) as $anbieter) {
             $slug = isset($anbieter['slug']) ? (string) $anbieter['slug'] : '';
 
             if ($slug === '') {
@@ -122,5 +151,49 @@ final class AnbieterMerker
         }
 
         return $nachSlug;
+    }
+
+    /**
+     * Die Anbieterzeilen — und den Grund festhalten, wenn keine kamen.
+     *
+     * ## Über `anbieterMitGrund()`, nicht `providers()` (Bug #1513)
+     *
+     * `providers()` gibt bei jedem Fehlschlag `[]` zurück — Nabe weg, Fehler,
+     * keine Freigabe sehen aus wie „niemand bedient das". Die Schwester-Methode
+     * in der Brücke trägt den Grund in der Form von `gateway()`: `ok`, `data`,
+     * `error`, `message`. Brain schickt ihn ohnehin; er wurde bisher nur
+     * verworfen.
+     *
+     * ## Rückfall auf `providers()`, solange die Brücke älter ist
+     *
+     * Das Paket führt die Brücke nur unter `require-dev` und `suggest`. Ein
+     * Produkt, das `peppermint/tasks` hebt, ohne die Brücke mitzuheben, hätte
+     * sonst auf JEDER Seite mit Fremdquellen einen Aufruf einer Methode, die es
+     * nicht gibt. Mit dem Rückfall bleibt dort alles beim Alten — die Lücke aus
+     * Bug #1513 eingeschlossen, aber nicht schlimmer als vorher. Entfernen,
+     * sobald alle Produkte eine Brücke mit `anbieterMitGrund()` führen.
+     *
+     * @return array<int, mixed>
+     */
+    private function fragen(string $vorgang): array
+    {
+        if (! method_exists(AiBrain::getFacadeRoot(), 'anbieterMitGrund')) {
+            return AiBrain::providers($vorgang);
+        }
+
+        $antwort = AiBrain::anbieterMitGrund($vorgang);
+
+        if (($antwort['ok'] ?? null) === true) {
+            return (array) ($antwort['data'] ?? []);
+        }
+
+        $this->ausfaelle[$vorgang] = [
+            'error' => isset($antwort['error']) ? (string) $antwort['error'] : null,
+            'message' => isset($antwort['message']) && $antwort['message'] !== ''
+                ? (string) $antwort['message']
+                : 'AI Brain hat nicht gesagt, wer „'.$vorgang.'" bedient.',
+        ];
+
+        return [];
     }
 }

@@ -136,6 +136,14 @@ final class BrueckenSubjektquellen implements MeldetQuellenAn
         $subjekte = $this->anbieterNachSlug(BrueckenSubjektquelle::CAPABILITY);
         $personen = $this->anbieterNachSlug(BrueckenSubjektquelle::CAPABILITY_PERSON);
 
+        // Kam eine der beiden Listen NICHT, sagt das Register es weiter
+        // (Bug #1513). Sonst fehlte die Quelle nur — und die Ernte nennte
+        // sich vollständig, wo niemand gefragt werden konnte. Nach Frage
+        // getrennt: Fällt nur die Personen-Frage aus, ist die Datensatz-Liste
+        // trotzdem vollständig und darf das auch sagen.
+        $this->ausfallMelden($register, BrueckenSubjektquelle::CAPABILITY, 'subjects');
+        $this->ausfallMelden($register, BrueckenSubjektquelle::CAPABILITY_PERSON, 'persons');
+
         $angemeldet = 0;
 
         // Die VEREINIGUNG, nicht einer der beiden Vorgänge. Ein System, das
@@ -167,6 +175,38 @@ final class BrueckenSubjektquellen implements MeldetQuellenAn
         }
 
         return $angemeldet;
+    }
+
+    /**
+     * Unter diesem Schlüssel steht ein Ausfall beim Anmelden in der Ernte.
+     *
+     * Es ist kein System, das gefehlt hat, sondern die Stelle, die sagt,
+     * welche es gibt — die Nabe. Derselbe Slug, unter dem Mailbox, Inbox und
+     * Benachrichtigungen die Nabe als Quelle führen.
+     */
+    public const NABE = 'ai-brain';
+
+    /**
+     * Den Grund eines Vorgangs, dessen Anbieter nicht kamen, ins Register.
+     *
+     * Der Grund ist der, den die Brücke liefert — `unreachable`, `not_allowed`,
+     * `tool_failed` oder keiner. Er wird nicht gedeutet und nicht ergänzt:
+     * {@see SourceFailure} lässt nur die vier Namen als Grund durch, und ein
+     * fehlender bleibt null statt geraten (siehe dort).
+     */
+    private function ausfallMelden(TaskSourceRegistry $register, string $vorgang, string $fuer): void
+    {
+        $ausfall = app(AnbieterMerker::class)->ausfall($vorgang);
+
+        if ($ausfall === null) {
+            return;
+        }
+
+        $register->failedToRegister(new SourceFailure(
+            self::NABE,
+            $ausfall['message'],
+            $ausfall['error'],
+        ), $fuer);
     }
 
     /**

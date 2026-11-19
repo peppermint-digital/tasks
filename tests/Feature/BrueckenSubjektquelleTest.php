@@ -75,19 +75,19 @@ it('meldet für jedes antwortende System eine Quelle an', function () {
     // Datensatz" und „meine Aufgaben dort". Angemeldet wird daraus trotzdem
     // eine Quelle je System: Das Register hält eine je Schlüssel, und zwei
     // Anmeldungen überschrieben einander lautlos.
-    AiBrain::shouldReceive('providers')
+    AiBrain::shouldReceive('anbieterMitGrund')
         ->with(BrueckenSubjektquelle::CAPABILITY)
-        ->andReturn([
+        ->andReturn(anbieterAntwort([
             ['slug' => 'peppermint-crm', 'name' => 'Peppermint CRM', 'key' => 'crm', 'label' => 'CRM'],
             ['slug' => 'peppermint-manager', 'name' => 'Peppermint Manager', 'key' => 'manager', 'label' => 'Manager'],
-        ]);
+        ]));
 
-    AiBrain::shouldReceive('providers')
+    AiBrain::shouldReceive('anbieterMitGrund')
         ->with(BrueckenSubjektquelle::CAPABILITY_PERSON)
-        ->andReturn([
+        ->andReturn(anbieterAntwort([
             ['slug' => 'peppermint-crm', 'name' => 'Peppermint CRM', 'key' => 'crm', 'label' => 'CRM'],
             ['slug' => 'peppermint-manager', 'name' => 'Peppermint Manager', 'key' => 'manager', 'label' => 'Manager'],
-        ]);
+        ]));
 
     $register = new TaskSourceRegistry;
 
@@ -106,17 +106,17 @@ it('meldet für jedes antwortende System eine Quelle an', function () {
 it('meldet auch ein System an, das nur die Personen-Frage beantwortet', function () {
     bitteEingerichtet();
 
-    AiBrain::shouldReceive('providers')
+    AiBrain::shouldReceive('anbieterMitGrund')
         ->with(BrueckenSubjektquelle::CAPABILITY)
-        ->andReturn([
+        ->andReturn(anbieterAntwort([
             ['slug' => 'peppermint-crm', 'key' => 'crm', 'label' => 'CRM'],
-        ]);
+        ]));
 
-    AiBrain::shouldReceive('providers')
+    AiBrain::shouldReceive('anbieterMitGrund')
         ->with(BrueckenSubjektquelle::CAPABILITY_PERSON)
-        ->andReturn([
+        ->andReturn(anbieterAntwort([
             ['slug' => 'peppermint-verwaltung', 'key' => 'verwaltung', 'label' => 'Verwaltung'],
-        ]);
+        ]));
 
     $register = new TaskSourceRegistry;
 
@@ -135,9 +135,9 @@ it('meldet auch ein System an, das nur die Personen-Frage beantwortet', function
 it('nimmt den KURZEN Schlüssel der Brücke, nicht den Slug', function () {
     bitteEingerichtet();
 
-    AiBrain::shouldReceive('providers')->andReturn([
+    AiBrain::shouldReceive('anbieterMitGrund')->andReturn(anbieterAntwort([
         ['slug' => 'peppermint-crm', 'key' => 'crm', 'label' => 'CRM'],
-    ]);
+    ]));
 
     $register = new TaskSourceRegistry;
     (new BrueckenSubjektquellen)->melden($register);
@@ -162,10 +162,10 @@ it('meldet nichts an, wenn die Brücke nicht eingerichtet ist', function () {
 it('lässt eine Anbieterzeile ohne Slug draussen, statt die Liste zu verwerfen', function () {
     bitteEingerichtet();
 
-    AiBrain::shouldReceive('providers')->andReturn([
+    AiBrain::shouldReceive('anbieterMitGrund')->andReturn(anbieterAntwort([
         ['name' => 'Kaputt, ohne Slug'],
         ['slug' => 'peppermint-crm', 'key' => 'crm', 'label' => 'CRM'],
-    ]);
+    ]));
 
     $register = new TaskSourceRegistry;
 
@@ -222,9 +222,9 @@ it('reicht die Fehlerklasse des Komm-Layers durch, statt eine leere Liste zu lie
     // Das System ANTWORTET (es steht unter den Anbietern) — es lehnt nur
     // diesen Aufruf ab. Genau dieser Unterschied ist der Gegenstand des
     // Tests: „nicht freigeschaltet" ist kein „gibt es nicht".
-    AiBrain::shouldReceive('providers')->andReturn([
+    AiBrain::shouldReceive('anbieterMitGrund')->andReturn(anbieterAntwort([
         ['slug' => 'peppermint-crm', 'key' => 'crm', 'label' => 'CRM'],
-    ]);
+    ]));
 
     AiBrain::shouldReceive('gateway')->andReturn([
         'ok' => false,
@@ -402,9 +402,9 @@ it('wirft auch dann mit einem Satz, wenn die Gegenstelle keinen mitschickt', fun
 it('beantwortet beide Fragen, wenn das System beide Vorgänge anbietet', function () {
     bitteEingerichtet();
 
-    AiBrain::shouldReceive('providers')->andReturn([
+    AiBrain::shouldReceive('anbieterMitGrund')->andReturn(anbieterAntwort([
         ['slug' => 'peppermint-crm', 'key' => 'crm', 'label' => 'CRM'],
-    ]);
+    ]));
 
     $register = new TaskSourceRegistry;
     $register->register(new ErfundeneQuelle('alt'));
@@ -426,16 +426,16 @@ it('beantwortet beide Fragen, wenn das System beide Vorgänge anbietet', functio
 it('fragt eine Quelle ohne Personen-Antwort in collect() gar nicht', function () {
     bitteEingerichtet();
 
-    AiBrain::shouldReceive('providers')
+    AiBrain::shouldReceive('anbieterMitGrund')
         ->with(BrueckenSubjektquelle::CAPABILITY)
-        ->andReturn([
+        ->andReturn(anbieterAntwort([
             ['slug' => 'peppermint-crm', 'key' => 'crm', 'label' => 'CRM'],
-        ]);
+        ]));
 
     // Das CRM steht NICHT unter den Anbietern der Personen-Frage.
-    AiBrain::shouldReceive('providers')
+    AiBrain::shouldReceive('anbieterMitGrund')
         ->with(BrueckenSubjektquelle::CAPABILITY_PERSON)
-        ->andReturn([]);
+        ->andReturn(anbieterAntwort([]));
 
     AiBrain::shouldReceive('gateway')->never();
 
@@ -453,9 +453,9 @@ it('fragt eine Quelle ohne Personen-Antwort in collect() gar nicht', function ()
 it('holt die eigenen Aufgaben eines Systems, das die Personen-Frage anbietet', function () {
     bitteEingerichtet();
 
-    AiBrain::shouldReceive('providers')->andReturn([
+    AiBrain::shouldReceive('anbieterMitGrund')->andReturn(anbieterAntwort([
         ['slug' => 'peppermint-verwaltung', 'key' => 'verwaltung', 'label' => 'Verwaltung'],
-    ]);
+    ]));
 
     AiBrain::shouldReceive('gateway')
         ->once()
@@ -491,9 +491,9 @@ it('holt die eigenen Aufgaben eines Systems, das die Personen-Frage anbietet', f
 it('holt die Aufgaben einer anderen Person gar nicht erst', function () {
     bitteEingerichtet();
 
-    AiBrain::shouldReceive('providers')->andReturn([
+    AiBrain::shouldReceive('anbieterMitGrund')->andReturn(anbieterAntwort([
         ['slug' => 'peppermint-verwaltung', 'key' => 'verwaltung', 'label' => 'Verwaltung'],
-    ]);
+    ]));
 
     AiBrain::shouldReceive('gateway')->never();
 
@@ -512,9 +512,9 @@ it('holt die Aufgaben einer anderen Person gar nicht erst', function () {
 it('reicht die Fehlerklasse auch bei der Personen-Frage durch', function () {
     bitteEingerichtet();
 
-    AiBrain::shouldReceive('providers')->andReturn([
+    AiBrain::shouldReceive('anbieterMitGrund')->andReturn(anbieterAntwort([
         ['slug' => 'peppermint-verwaltung', 'key' => 'verwaltung', 'label' => 'Verwaltung'],
-    ]);
+    ]));
 
     AiBrain::shouldReceive('gateway')->andReturn([
         'ok' => false, 'error' => SourceFailure::NOT_ALLOWED, 'message' => 'Keine Freigabe',
@@ -538,9 +538,9 @@ it('reicht die Fehlerklasse auch bei der Personen-Frage durch', function () {
 it('verschwindet von selbst, wenn das System die Fähigkeit verliert', function () {
     bitteEingerichtet();
 
-    AiBrain::shouldReceive('providers')->andReturn([
+    AiBrain::shouldReceive('anbieterMitGrund')->andReturn(anbieterAntwort([
         ['slug' => 'peppermint-manager', 'key' => 'manager', 'label' => 'Manager'],
-    ]);
+    ]));
 
     $quelle = new BrueckenSubjektquelle('peppermint-crm', 'crm', 'CRM');
 
@@ -565,10 +565,10 @@ it('verschwindet von selbst, wenn das System die Fähigkeit verliert', function 
 it('nimmt einen Anmelder in config(tasks.sources) an und meldet dessen Quellen', function () {
     bitteEingerichtet();
 
-    AiBrain::shouldReceive('providers')->andReturn([
+    AiBrain::shouldReceive('anbieterMitGrund')->andReturn(anbieterAntwort([
         ['slug' => 'peppermint-crm', 'key' => 'crm', 'label' => 'CRM'],
         ['slug' => 'peppermint-manager', 'key' => 'manager', 'label' => 'Manager'],
-    ]);
+    ]));
 
     config()->set('tasks.sources', [BrueckenSubjektquellen::class]);
     app()->forgetInstance(TaskSourceRegistry::class);
@@ -612,7 +612,7 @@ it('fragt ohne angemeldete Person gar nicht erst über die Leitung', function ()
     // ein anonymer Zugriff sollen keine Anbieter erfragen — und zwar nicht aus
     // Sparsamkeit: Ohne Person gibt es niemanden, dessen fremde Aufgaben
     // gemeint wären. Dieselbe Reihenfolge wie bei BrainCalendarSources.
-    AiBrain::shouldReceive('providers')->never();
+    AiBrain::shouldReceive('anbieterMitGrund')->never();
 
     $register = new TaskSourceRegistry;
 
@@ -623,9 +623,9 @@ it('fragt ohne angemeldete Person gar nicht erst über die Leitung', function ()
 it('nimmt die Farbe nach dem KURZEN Schlüssel, wie der Kalender', function () {
     bitteEingerichtet();
 
-    AiBrain::shouldReceive('providers')->andReturn([
+    AiBrain::shouldReceive('anbieterMitGrund')->andReturn(anbieterAntwort([
         ['slug' => 'peppermint-manager', 'key' => 'manager', 'label' => 'Manager'],
-    ]);
+    ]));
 
     $register = new TaskSourceRegistry;
 
@@ -642,9 +642,9 @@ it('nimmt die Farbe nach dem KURZEN Schlüssel, wie der Kalender', function () {
 it('meldet keine Farbe, wenn es keine Zuordnung gibt', function () {
     bitteEingerichtet();
 
-    AiBrain::shouldReceive('providers')->andReturn([
+    AiBrain::shouldReceive('anbieterMitGrund')->andReturn(anbieterAntwort([
         ['slug' => 'peppermint-manager', 'key' => 'manager', 'label' => 'Manager'],
-    ]);
+    ]));
 
     $register = new TaskSourceRegistry;
     (new BrueckenSubjektquellen)->melden($register);

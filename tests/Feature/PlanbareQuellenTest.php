@@ -77,13 +77,13 @@ function registerMeldet(array $systeme, array $vorgaenge): void
     );
 
     foreach ($vorgaenge as $vorgang) {
-        AiBrain::shouldReceive('providers')->with($vorgang)->andReturn($zeilen);
+        AiBrain::shouldReceive('anbieterMitGrund')->with($vorgang)->andReturn(anbieterAntwort($zeilen));
     }
 
     // Was nicht ausdrücklich genannt ist, bedient niemand. Ohne diese Zeile
     // antwortet die Attrappe auf einen nicht erwarteten Vorgang mit einem
     // Fehler statt mit „keiner" — und der Test prüfte dann die Attrappe.
-    AiBrain::shouldReceive('providers')->andReturn([]);
+    AiBrain::shouldReceive('anbieterMitGrund')->andReturn(anbieterAntwort([]));
 }
 
 afterEach(function () {
@@ -360,11 +360,11 @@ it('gibt in jeder Lage der Nabe dieselbe Antwort auf „planbar?" und zeigt den 
     // keine stellen — nicht weil es teuer waere, sondern weil die Antwort
     // dort in drei von vier Lagen luegt.
     $gefragt = [];
-    AiBrain::shouldReceive('providers')->andReturnUsing(function (string $vorgang) use (&$gefragt, $anbieter) {
+    AiBrain::shouldReceive('anbieterMitGrund')->andReturnUsing(anbieterAntwortend(function (string $vorgang) use (&$gefragt, $anbieter) {
         $gefragt[] = $vorgang;
 
         return $anbieter;
-    });
+    }));
     AiBrain::shouldReceive('gateway')->andReturn($antwort);
 
     $register = new TaskSourceRegistry;
@@ -759,12 +759,12 @@ it('fragt dieselbe Frage innerhalb einer Anfrage nur einmal ueber die Leitung', 
     // Anfrage. Ohne ihn kostete jede Quelle in einer Liste von drei Systemen
     // drei Aufrufe je Vorgang, jeder mit der Zeitgrenze aus `gateway.timeout`
     // — vorbelegt 20 Sekunden (Bug #1469).
-    AiBrain::shouldReceive('providers')
+    AiBrain::shouldReceive('anbieterMitGrund')
         ->once()
         ->with(PlansForeignTasks::CAPABILITY_CREATE)
-        ->andReturn([['slug' => 'peppermint-crm', 'key' => 'crm', 'label' => 'CRM']]);
+        ->andReturn(anbieterAntwort([['slug' => 'peppermint-crm', 'key' => 'crm', 'label' => 'CRM']]));
 
-    AiBrain::shouldReceive('providers')->andReturn([]);
+    AiBrain::shouldReceive('anbieterMitGrund')->andReturn(anbieterAntwort([]));
 
     $eine = new BrueckenSubjektquelle('peppermint-crm', 'crm', 'CRM');
     $zwei = new BrueckenSubjektquelle('peppermint-manager', 'manager', 'Manager');

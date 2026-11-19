@@ -115,7 +115,7 @@ function lebensdauerZaehler(?int &$aufrufe): void
 {
     $aufrufe = 0;
 
-    AiBrain::shouldReceive('providers')->andReturnUsing(function () use (&$aufrufe): array {
+    AiBrain::shouldReceive('anbieterMitGrund')->andReturnUsing(anbieterAntwortend(function () use (&$aufrufe): array {
         $aufrufe++;
 
         return match (Auth::id()) {
@@ -130,7 +130,7 @@ function lebensdauerZaehler(?int &$aufrufe): void
             // waere die Wache der Fehler und nicht die Bindung.
             default => [],
         };
-    });
+    }));
 }
 
 /** Person A. */

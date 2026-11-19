@@ -65,14 +65,14 @@ function merkerZaehler(?int &$aufrufe): void
 {
     $aufrufe = 0;
 
-    AiBrain::shouldReceive('providers')->andReturnUsing(function (string $vorgang) use (&$aufrufe): array {
+    AiBrain::shouldReceive('anbieterMitGrund')->andReturnUsing(anbieterAntwortend(function (string $vorgang) use (&$aufrufe): array {
         $aufrufe++;
 
         return [
             ['slug' => 'peppermint-crm', 'key' => 'crm', 'label' => 'CRM'],
             ['slug' => 'peppermint-manager', 'key' => 'manager', 'label' => 'Manager'],
         ];
-    });
+    }));
 }
 
 afterEach(function () {
@@ -186,9 +186,9 @@ it('misst in der nächsten Anfrage neu, wenn ein System die Fähigkeit verliert'
 
     $antwort = [['slug' => 'peppermint-crm', 'key' => 'crm', 'label' => 'CRM']];
 
-    AiBrain::shouldReceive('providers')->andReturnUsing(function () use (&$antwort): array {
+    AiBrain::shouldReceive('anbieterMitGrund')->andReturnUsing(anbieterAntwortend(function () use (&$antwort): array {
         return $antwort;
-    });
+    }));
 
     $quelle = new BrueckenSubjektquelle('peppermint-crm', 'crm', 'CRM');
 
@@ -214,11 +214,11 @@ it('merkt sich auch die leere Antwort eines Ausfalls', function () {
 
     $aufrufe = 0;
 
-    AiBrain::shouldReceive('providers')->andReturnUsing(function () use (&$aufrufe): array {
+    AiBrain::shouldReceive('anbieterMitGrund')->andReturnUsing(anbieterAntwortend(function () use (&$aufrufe): array {
         $aufrufe++;
 
         return [];
-    });
+    }));
 
     $merker = app(AnbieterMerker::class);
 

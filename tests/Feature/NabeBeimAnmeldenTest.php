@@ -13,6 +13,7 @@ use Peppermint\Tasks\Sources\BrueckenSubjektquellen;
 use Peppermint\Tasks\Sources\SourceFailure;
 use Peppermint\Tasks\Sources\TaskHarvest;
 use Peppermint\Tasks\Sources\TaskSourceRegistry;
+use Peppermint\Tasks\Tests\Support\ErfundeneQuelle;
 use Peppermint\Tasks\Tests\Support\Person;
 
 /*
@@ -268,4 +269,143 @@ it('fragt auch im Ausfall jeden Vorgang nur einmal je Anfrage', function () {
     $register->forPersons();
 
     Http::assertSentCount(2);
+});
+
+// --- Der Schlüssel der Nabe (Bug #1523) ------------------------------------
+
+/*
+ * Der Schlüssel der Nabe bezeichnet NUR die Nabe (Bug #1523).
+ *
+ * ## Was vorher war
+ *
+ * Der Platzhalter, unter dem ein Ausfall beim Anmelden in der Ernte steht,
+ * hiess `ai-brain`. Der Manager führt unter demselben Schlüssel eine EIGENE
+ * Aufgabenquelle (`AiBrainTaskSource`, die Brain-Aufgaben der Person). Drei
+ * Folgen, alle lautlos:
+ *
+ * | Lage | Folge |
+ * |---|---|
+ * | eigene Quelle antwortet, Nabe fällt beim Anmelden aus | `ai-brain` unter `ok` UND unter `failures` |
+ * | eigene Quelle fällt beim Ernten aus | ihr Ausfall verdeckt den der Nabe (`??=`) |
+ * | Person/Maske wählt die eigene Quelle ab | der Nabe-Ausfall verschwindet mit |
+ *
+ * Die eigene Quelle wird hier nachgestellt, wie der Manager sie führt: eine
+ * Quelle des Registers mit dem Schlüssel `ai-brain`, neben den
+ * Brücken-Quellen. Die Nabe fällt mit einer 500 aus — die Lage, in der die
+ * Ernte den Anmelde-Ausfall trägt (siehe `NabeBeimAnmeldenTest`).
+ *
+ * ## Und die Regel, die die Umbenennung erst richtig macht
+ *
+ * Ohne den Zufall des gleichen Namens hätte der Manager den Nabe-Ausfall auch
+ * dann gezeigt, wenn er NUR das eigene System fragt — `skip` = alle Schlüssel
+ * des Registers. Eine Ernte, die abgewählt und niemanden übrig gelassen hat,
+ * braucht die Nabe nicht. Die Tests 4 und 5 halten beide Seiten fest.
+ */
+
+/** Die eigene Quelle des Managers, nachgestellt — gleicher Schlüssel, gleiche Frage. */
+function schluesselEigeneQuelle(bool $faellt = false): void
+{
+    app(TaskSourceRegistry::class)->register(new ErfundeneQuelle('ai-brain', [], $faellt));
+}
+
+function schluesselNabeFaelltAus(): void
+{
+    nabeAufbau();
+    nabeAntwortet(['*' => Http::response('kaputt', 500)]);
+}
+
+/**
+ * 1. Der Kern des Bugs: ein Schlüssel in `ok` und in `failures`.
+ */
+it('fuehrt die Nabe nicht unter dem Schluessel einer Quelle, die geantwortet hat', function () {
+    schluesselNabeFaelltAus();
+    schluesselEigeneQuelle();
+
+    $ernte = app(TaskSourceRegistry::class)->harvest(1);
+
+    expect($ernte->ok)->toBe(['ai-brain'])
+        ->and(array_keys($ernte->failures))->toBe([BrueckenSubjektquellen::NABE])
+        // Der allgemeine Satz, nicht nur dieser Fall: Kein Schlüssel steht in
+        // beiden Listen.
+        ->and(array_intersect($ernte->ok, array_keys($ernte->failures)))->toBe([])
+        ->and($ernte->complete())->toBeFalse();
+});
+
+/**
+ * 2. Fällt die eigene Quelle beim Ernten aus, stehen BEIDE Ausfälle da.
+ *
+ * Vorher galt `??=`: Der Ernte-Ausfall von `ai-brain` ging vor, und der
+ * Anmelde-Ausfall der Nabe unter demselben Schlüssel fiel weg. Zwei Gründe,
+ * zwei Zeilen — die Person soll beide lesen können.
+ */
+it('verdeckt den Nabe-Ausfall nicht mit dem Ausfall der eigenen Quelle', function () {
+    schluesselNabeFaelltAus();
+    schluesselEigeneQuelle(faellt: true);
+
+    $ernte = app(TaskSourceRegistry::class)->harvest(1);
+
+    expect(array_keys($ernte->failures))->toEqualCanonicalizing(['ai-brain', BrueckenSubjektquellen::NABE]);
+});
+
+/**
+ * 3. Wer die eigene Quelle abwählt, wählt die Nabe nicht mit ab.
+ */
+it('laesst den Nabe-Ausfall stehen, wenn nur die eigene Quelle abgewaehlt ist', function () {
+    schluesselNabeFaelltAus();
+    schluesselEigeneQuelle();
+    app(TaskSourceRegistry::class)->register(new ErfundeneQuelle('verwaltung'));
+
+    $ernte = app(TaskSourceRegistry::class)->harvest(1, ['ai-brain']);
+
+    expect($ernte->ok)->toBe(['verwaltung'])
+        ->and(array_keys($ernte->failures))->toBe([BrueckenSubjektquellen::NABE]);
+});
+
+/**
+ * 4. Nur das Eigene gefragt — dann ist der Nabe-Ausfall belanglos.
+ *
+ * So fragt der Manager, wenn in der Maske das eigene System gewählt ist:
+ * `skip` = alle Schlüssel des Registers. Diese Ernte hat das Register nicht
+ * gebraucht und darf sich vollständig nennen; sonst verlöre die Maske ihr
+ * „hier ist nichts offen" für Aufgaben, die die Nabe nie berührt haben.
+ */
+it('meldet den Nabe-Ausfall nicht, wenn die Ernte alles abgewaehlt und niemanden gefragt hat', function () {
+    schluesselNabeFaelltAus();
+    schluesselEigeneQuelle();
+
+    $register = app(TaskSourceRegistry::class);
+    $ernte = $register->harvest(1, array_keys($register->all()));
+
+    expect($ernte->ok)->toBe([])
+        ->and($ernte->failures)->toBe([])
+        ->and($ernte->complete())->toBeTrue();
+});
+
+/**
+ * 5. Die Gegenprobe zu 4: Ist die Nabe ganz weg, steht oft NIEMAND im
+ * Register. Dann hat auch niemand etwas abgewählt — und gerade dann ist der
+ * Ausfall die ganze Auskunft (#1513). Ein `skip` mit Schlüsseln, die es gar
+ * nicht gibt, ändert daran nichts.
+ */
+it('meldet den Nabe-Ausfall weiter, wenn das Register leer ist, auch mit skip', function () {
+    schluesselNabeFaelltAus();
+
+    $register = app(TaskSourceRegistry::class);
+
+    expect($register->all())->toBe([])
+        ->and(array_keys($register->harvest(1)->failures))->toBe([BrueckenSubjektquellen::NABE])
+        ->and(array_keys($register->harvest(1, ['crm'])->failures))->toBe([BrueckenSubjektquellen::NABE])
+        ->and(array_keys($register->collectForSubject('order', 7, ['crm'])->failures))->toBe([BrueckenSubjektquellen::NABE]);
+});
+
+/**
+ * 6. Der Name selbst — die Vermittlung, kein System.
+ *
+ * Steht als eigener Test, weil die Tests oben über die Konstante sprechen und
+ * deshalb auch mit `ai-brain` grün wären, sobald keine Quelle so heisst. Der
+ * Schlüssel wandert in JSON-Antworten an Masken; ein Rückfall auf einen
+ * Systemnamen soll hier laut werden und nicht erst im Manager.
+ */
+it('heisst nabe', function () {
+    expect(BrueckenSubjektquellen::NABE)->toBe('nabe');
 });

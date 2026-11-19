@@ -363,12 +363,19 @@ class TaskSourceRegistry
         $ok = [];
         $failures = [];
 
+        $gefragt = 0;
+        $abgewaehlt = 0;
+
         foreach ($this->forSubjects() as $key => $source) {
             if (in_array($key, $skip, true)) {
                 // Switched off is NOT a failure: nobody is waiting for this
                 // answer, so its absence needs no caveat.
+                $abgewaehlt++;
+
                 continue;
             }
+
+            $gefragt++;
 
             try {
                 foreach ($source->tasksForSubject($type, $id) as $task) {
@@ -396,7 +403,7 @@ class TaskSourceRegistry
             }
         }
 
-        return new TaskHarvest($tasks, $ok, $this->withRegistrationFailures($failures, 'subjects', $skip));
+        return new TaskHarvest($tasks, $ok, $this->withRegistrationFailures($failures, 'subjects', $skip, $gefragt, $abgewaehlt));
     }
 
     /**
@@ -462,10 +469,17 @@ class TaskSourceRegistry
         // `forPersons()`, not `available()`: a subject-only source would be
         // asked and would answer nothing, which costs a call across a system
         // boundary for a question it does not hold.
+        $gefragt = 0;
+        $abgewaehlt = 0;
+
         foreach ($this->forPersons() as $key => $source) {
             if (in_array($key, $skip, true)) {
+                $abgewaehlt++;
+
                 continue;
             }
+
+            $gefragt++;
 
             try {
                 foreach ($source->tasks($userId) as $task) {
@@ -490,7 +504,7 @@ class TaskSourceRegistry
             }
         }
 
-        return new TaskHarvest($tasks, $ok, $this->withRegistrationFailures($failures, 'persons', $skip));
+        return new TaskHarvest($tasks, $ok, $this->withRegistrationFailures($failures, 'persons', $skip, $gefragt, $abgewaehlt));
     }
 
     /**
@@ -500,12 +514,37 @@ class TaskSourceRegistry
      * den Quellen: Niemand wartet auf diese Antwort. Ein Ausfall beim Ernten
      * desselben Schlüssels geht vor; er ist der jüngere Befund.
      *
+     * ## Eine Ernte, die niemanden gefragt hat, braucht die Nabe nicht (#1523)
+     *
+     * Hat der Aufrufer Quellen dieses Registers abgewählt und ist dabei KEINE
+     * übrig geblieben, fragt die Ernte das Register gar nicht — sie will nur,
+     * was der Aufrufer selbst beisteuert. So wählt der Manager „nur das eigene
+     * System": `skip` = alle Schlüssel des Registers. Ein Ausfall der Nabe
+     * beim Anmelden ist für diese Ernte belanglos; meldete sie ihn, stünde sie
+     * als unvollständig da, und die Maske verlöre ihr „hier ist nichts offen"
+     * für Aufgaben, die die Nabe nie berührt haben.
+     *
+     * Bis #1523 hielt das nur aus Zufall: Der Platzhalter hiess `ai-brain`,
+     * und der Manager führt eine eigene Quelle unter diesem Schlüssel — sie
+     * stand also in `skip` und nahm den Nabe-Ausfall mit hinaus.
+     *
+     * Bewusst NICHT „keine Quelle gefragt" allein: Ist die Nabe ganz
+     * ausgefallen, steht oft GAR KEINE Quelle im Register. Dann hat niemand
+     * etwas abgewählt, und gerade dann ist der Ausfall die ganze Auskunft
+     * (#1513). Erst Abwählen UND niemand übrig heisst „nur das Eigene".
+     *
      * @param  array<string, SourceFailure>  $failures
      * @param  array<int, string>  $skip
+     * @param  int  $gefragt  wie viele Quellen dieser Frage die Ernte gefragt hat
+     * @param  int  $abgewaehlt  wie viele Quellen dieser Frage `skip` ausgelassen hat
      * @return array<string, SourceFailure>
      */
-    protected function withRegistrationFailures(array $failures, string $for, array $skip): array
+    protected function withRegistrationFailures(array $failures, string $for, array $skip, int $gefragt, int $abgewaehlt): array
     {
+        if ($abgewaehlt > 0 && $gefragt === 0) {
+            return $failures;
+        }
+
         foreach ($this->registrationFailures($for) as $key => $failure) {
             if (! in_array($key, $skip, true)) {
                 $failures[$key] ??= $failure;

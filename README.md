@@ -353,6 +353,18 @@ in `ok` and contributes nothing. Without it, "answered and had nothing" and
 "was never asked" look the same one level up — which is the distinction all of
 this is for.
 
+**When the hub itself fails while sources are being registered**, the harvest
+carries that under the key `nabe` (`BrueckenSubjektquellen::NABE`) — the
+broker, not a system. Until 0.18.0 the key was `ai-brain`, which collided with
+the Manager's own `ai-brain` task source (Bug #1523). A mask that shows the
+failure looks its name up by that key; the key is not a display text.
+
+That failure is left out when the harvest skipped sources and asked none —
+`skip` naming every key of the register means "only what I bring myself", and
+the hub does not matter to that answer. An empty register with no skipped
+source still reports it: that is exactly the case where the hub failure is the
+whole story.
+
 `collect()` keeps its old shape — the hub calls it, and nothing there should
 change because a form needed more detail. It asks `harvest()` for its answer and
 drops everything but the tasks, so the two cannot drift.

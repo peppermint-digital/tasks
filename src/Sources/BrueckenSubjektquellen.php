@@ -181,10 +181,28 @@ final class BrueckenSubjektquellen implements MeldetQuellenAn
      * Unter diesem Schlüssel steht ein Ausfall beim Anmelden in der Ernte.
      *
      * Es ist kein System, das gefehlt hat, sondern die Stelle, die sagt,
-     * welche es gibt — die Nabe. Derselbe Slug, unter dem Mailbox, Inbox und
-     * Benachrichtigungen die Nabe als Quelle führen.
+     * welche es gibt — die Nabe. Der Schlüssel sagt genau das: die
+     * Vermittlung, kein System.
+     *
+     * ## Warum nicht mehr `ai-brain` (Bug #1523)
+     *
+     * Bis zum 19.11.2026 hiess der Platzhalter `ai-brain`. Der Manager führt
+     * unter demselben Schlüssel eine EIGENE Aufgabenquelle (die Brain-Aufgaben
+     * der Person). Folge: `ai-brain` stand in derselben Antwort unter `ok` und
+     * unter `failures` — und zwei Wege verdeckten den Nabe-Ausfall still: ein
+     * `skip`, der die eigene Quelle nannte, und ein Ausfall der eigenen Quelle
+     * beim Ernten (Vorrang vor dem Anmelde-Ausfall desselben Schlüssels).
+     *
+     * Umbenannt wurde der Platzhalter und nicht die Quelle: Hinter ihm lagen
+     * keine gespeicherten Daten, hinter dem Quellenschlüssel womöglich schon.
+     * Die frühere Begründung („derselbe Slug wie bei Mailbox, Inbox und
+     * Benachrichtigungen") trug nicht — das sind andere Ablagen, in denen die
+     * Nabe als ABSENDER steht, nicht als Platzhalter in einer Ernte.
+     *
+     * Wer den Namen in einer Maske zeigen will, schlägt ihn nach diesem
+     * Schlüssel nach; der Schlüssel selbst ist kein Anzeigetext.
      */
-    public const NABE = 'ai-brain';
+    public const NABE = 'nabe';
 
     /**
      * Den Grund eines Vorgangs, dessen Anbieter nicht kamen, ins Register.

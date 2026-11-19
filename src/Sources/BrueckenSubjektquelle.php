@@ -324,7 +324,15 @@ final class BrueckenSubjektquelle extends TaskSource implements PlansForeignTask
      *
      * Und es ist dieselbe Prüfung, die {@see isAvailable()} schon macht,
      * mitsamt deren Begründung: Zwischen „registriert" und „gefragt" liegt
-     * Zeit, und eine entzogene Freigabe soll den Knopf von selbst wegnehmen.
+     * Zeit.
+     *
+     * Das Register fragt hier NICHT mehr (#10056). Diese Antwort bildet vier
+     * Lagen auf ein `false` ab — Nabe weg, Fehlerantwort, Freigabe fehlt,
+     * Fähigkeit fehlt —, und eine Maske, die damit VOR dem Zeichnen filtert,
+     * schickt den Leser bei drei davon an die falsche Stelle.
+     * {@see TaskSourceRegistry::plannable()} fragt deshalb nur `instanceof`,
+     * und den Grund liefert der Versuch: {@see plan()} wirft mit der
+     * Fehlerklasse der Gegenstelle.
      *
      * Ein Vorgang, der keiner der drei ist, bekommt hier `false` und keinen
      * Wurf — laut wird die eine Stelle, die eine Maske fragt

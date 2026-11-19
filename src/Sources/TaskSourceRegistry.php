@@ -124,15 +124,42 @@ class TaskSourceRegistry
     /**
      * The sources you may plan time in at all.
      *
-     * The mirror of `writable()`, and deliberately so: an interface asks for
-     * this instead of checking itself, because whoever repeats the check at
-     * every control eventually forgets it somewhere.
+     * The mirror of `writable()` in purpose — an interface asks for this
+     * instead of checking itself, because whoever repeats the check at every
+     * control eventually forgets it somewhere — and deliberately NOT in shape:
+     * it asks nobody over the wire (#10056).
      *
-     * Built on `available()` for the same reason: a product nobody has access
-     * to is not offered for planning either. And that is the stricter reading
-     * it looks like — `isAvailable()` measures the READING capabilities over
-     * the bridge, so a system appears here only if its tasks can be seen at
-     * all. Which is correct: one plans time on a task one can see.
+     * ## Local and static, because the question is
+     *
+     * Two questions sit next to each other here, and they have different
+     * natures:
+     *
+     * | question                                    | nature           | answered by                               |
+     * |---------------------------------------------|------------------|-------------------------------------------|
+     * | "can one plan into this system at all?"     | local, static    | `instanceof PlansForeignTasks` — cannot fail |
+     * | "did it work?"                              | remote, dynamic  | the attempt itself, with its reason       |
+     *
+     * Until 19.11.2026 this method was built on `available()`, and
+     * `plannableFor()` filtered over {@see PlansForeignTasks::offers()}. Both
+     * ask the hub's register, and the bridge maps FOUR distinguishable states
+     * onto ONE empty list there — hub unreachable, hub answers with an error,
+     * grant missing, capability really not offered
+     * (`ai-brain-bridge/src/Gateway/GatewayClient.php`, `providers()`). A
+     * check before the deed over that path turned three different reasons
+     * into "not plannable", and the planning mask had explicitly decided on
+     * four reasons and four sentences: `unreachable` means wait,
+     * `not_allowed` means fetch somebody. Confusing them sends the reader to
+     * the wrong place.
+     *
+     * A pre-flight network call that goes quiet on failure is the worse half
+     * of both: it costs a call and says less than the attempt. So the reason
+     * stays where it arises — in the {@see \Peppermint\Tasks\Exceptions\ForeignSourceFailed}
+     * that `plan()`, `move()` and `unplan()` throw, with the error class of the
+     * other side.
+     *
+     * That is also why this is `all()` and not `available()`: `isAvailable()`
+     * is the same register question for the reading capabilities, and an
+     * unreachable hub would empty this list just as quietly.
      *
      * ## Why there is no `isWritable()` equivalent in this pair
      *
@@ -147,70 +174,57 @@ class TaskSourceRegistry
      * `RemoteTaskSystem` says what happens to those: "A second rights list
      * here would age without anyone noticing it had."
      *
-     * ## This pair has to GET a caller, and the mirror is the warning
+     * ## Kept, although the probation said otherwise
      *
-     * Measured on 16.11.2026 across all five repositories (manager, CRM,
-     * Verwaltung, AI Brain, this package): `writable()` and `writableFor()`
-     * have **no caller at all** outside this package's own tests. The
-     * reasoning above is theirs, and nothing in the house has taken them up on
-     * it.
+     * Until #10056 this docblock said: if the planning mask of #9898 step 4
+     * ships without calling this pair, delete it. The mask's bee did not call
+     * it — and named the reason, which was this method asking the network.
+     * With the local version that reason is gone, and the pair gets the caller
+     * it was meant for: which systems the mask marks as plannable at all now
+     * lives HERE, once, instead of four times in the products.
      *
-     * Worse, the shape they exist to spare is being written by hand next door,
-     * and the calendar package has the same story one package over. Its
-     * `EventSourceRegistry::writable()` carries this very argument in its
-     * docblock, and the Manager's own fix commit measured the consequence
-     * (`66bbf043`, 12.11.2026): "Gerufen hat es NIEMAND: null Treffer ueber
-     * Paket, drei Produkte und alle Testreihen. Daneben filterten drei
-     * Handkopien selbst mit `method_exists()`." Three — character-identical in
-     * Manager, CRM and Verwaltung; Bug #1417 had named two.
-     *
-     * So the sentence "whoever repeats the check at every control eventually
-     * forgets it somewhere" is not a worry about the future. It has already
-     * happened three times, to the method that says it.
-     *
-     * And the attempt to end it did not hold: `66bbf043` pulled the answer back
-     * into the package, and `c9b3348f` reverted it **ten minutes later** —
-     * because it needed an `EventSourceRegistry::ziele()` that was on the
-     * calendar's main and not pushed, so the pinned state made it red. The
-     * Manager's shipping tree therefore still runs the hand-copy
-     * (`app/Http/Controllers/CalendarEventController.php:1610`, called from
-     * `:487`; `->ziele(` has zero occurrences in `app/`). Measured there on
-     * 16.11.2026 at `c9b3348f`.
-     *
-     * Whoever reads this and goes looking: measure the tree, not the fix. Both
-     * commits are from the same hour, and the fix reads like the current state
-     * while the revert is what ships.
-     *
-     * The mirror is therefore deliberate AND on probation. The planning mask
-     * of step 4 (#9898) is the one caller this pair is for, and it asks here
-     * and nowhere else. **If that mask ships without calling it, these two
-     * methods should be deleted rather than kept** — an unused convenience in
-     * a shared package is not neutral: it reads as the sanctioned way while
-     * every product quietly does it by hand, and then the two drift.
+     * The warning behind the probation stands: an unused convenience in a
+     * shared package reads as the sanctioned way while every product does it
+     * by hand. `writable()` / `writableFor()` had no caller at all outside this
+     * package's tests when measured on 16.11.2026, and the calendar package's
+     * `EventSourceRegistry::writable()` had three character-identical hand
+     * copies in Manager, CRM and Verwaltung (`66bbf043`, reverted in
+     * `c9b3348f` ten minutes later — measure the tree, not the fix).
      *
      * @return array<string, PlansForeignTasks>
      */
     public function plannable(): array
     {
         return array_filter(
-            $this->available(),
+            $this->sources,
             fn (TaskSource $source) => $source instanceof PlansForeignTasks,
         );
     }
 
     /**
-     * The sources you may perform THIS planning operation in.
+     * The sources you may ATTEMPT this planning operation in.
      *
-     * Narrower than `plannable()`, and the same point as
-     * `writableFor()`: a product can hold blocks and still not offer every
-     * operation. The Verwaltung is the measured case — it has `UpdateTaskTool`
-     * and `DeleteTaskTool` and no `CreateTaskTool`.
+     * Since #10056 the same list as `plannable()` for every valid operation.
+     * It no longer narrows over {@see PlansForeignTasks::offers()}: whether
+     * the other side offers the operation RIGHT NOW is a remote, dynamic
+     * question, and the answer that keeps its reason is the attempt. The
+     * Verwaltung — `UpdateTaskTool` and `DeleteTaskTool`, no `CreateTaskTool`
+     * — therefore appears here for `create` too, and its no arrives from
+     * `plan()` as `not_offered`, distinguishable from `unreachable` and
+     * `not_allowed`. Filtered out beforehand, all three looked the same.
      *
-     * An unknown operation THROWS rather than returning an empty list. An
-     * empty list would be the wrong answer in the one shape that cannot be
-     * seen: a mask asking for a mistyped capability would show no systems at
-     * all, which reads as "nobody offers this" — a claim, not an absence. Same
-     * reasoning as the type check in `TasksServiceProvider::buildSources()`.
+     * `offers()` itself stays, and stays right for what it says: "does the
+     * other side offer this capability at the moment". It just is not a
+     * question a mask can ask BEFORE drawing without lying in three of four
+     * cases.
+     *
+     * Why the method is kept rather than folded into `plannable()`: the
+     * operation is still checked, and that check is local. An unknown
+     * operation THROWS rather than returning an empty list. An empty list
+     * would be the wrong answer in the one shape that cannot be seen: a mask
+     * asking for a mistyped capability would show no systems at all, which
+     * reads as "nobody offers this" — a claim, not an absence. Same reasoning
+     * as the type check in `TasksServiceProvider::buildSources()`.
      *
      * @param  string  $capability  one of {@see PlansForeignTasks::CAPABILITIES}
      * @return array<string, PlansForeignTasks>
@@ -226,11 +240,7 @@ class TaskSourceRegistry
             );
         }
 
-        return array_filter(
-            $this->plannable(),
-            fn (TaskSource $source) => $source instanceof PlansForeignTasks
-                && $source->offers($capability),
-        );
+        return $this->plannable();
     }
 
     /**

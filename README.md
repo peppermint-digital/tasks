@@ -690,6 +690,23 @@ $block = $source->plan(auth()->id(), $foreignTask->id, new TimeSpan(
 ));
 ```
 
+**`plannable()` / `plannableFor()` ask nobody over the wire** (#10056). Two
+questions, two natures:
+
+| question | nature | answered by |
+|---|---|---|
+| "can one plan into this system at all?" | local, static | `instanceof PlansForeignTasks` — cannot fail |
+| "did it work?" | remote, dynamic | the attempt — `plan()` / `move()` / `unplan()` throw `ForeignSourceFailed` with the other side's error class |
+
+Over the bridge, an unreachable hub, an error answer, a missing grant and a
+capability that is really not offered all come back from `providers()` as the
+same empty list. A mask that filtered by `offers()` before drawing turned three
+reasons into "not offered" — and `unreachable` means wait, `not_allowed` means
+fetch somebody. So the list is static, and the reason arrives with the attempt.
+`offers()` stays, for "does the other side offer this right now"; it is just not
+a question to ask before drawing. For the same reason `plannable()` is built on
+`all()`, not on `available()` — `isAvailable()` asks the same register.
+
 Three capabilities, not one — `tasks.schedule.create`, `.update`, `.delete`.
 The Verwaltung is why: it has `UpdateTaskTool` and `DeleteTaskTool` and no
 `CreateTaskTool`, so a single switch would make it either entirely plannable or

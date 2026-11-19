@@ -248,32 +248,54 @@ it('haelt eine Quelle ohne Planungsvertrag aus der Planungsliste heraus', functi
         ->and($register->all())->toHaveCount(3);
 });
 
-it('bietet zum Planen nichts an, was gar nicht erreichbar ist', function () {
-    // `plannable()` baut auf `available()` auf und nicht auf der rohen Liste —
-    // und das ist hier die strengere Lesart, die es sein soll: `isAvailable()`
-    // misst die LESENDEN Vorgaenge. Wer die Aufgabe nicht sehen kann, plant
-    // auch keine Zeit an ihr.
+it('nennt ein System planbar, auch wenn es gerade nicht erreichbar ist — der Grund kommt beim Versuch', function () {
+    // Umgeschrieben mit #10056. Bis zum 19.11.2026 stand hier das GEGENTEIL:
+    // „bietet zum Planen nichts an, was gar nicht erreichbar ist", weil
+    // `plannable()` auf `available()` aufbaute. Das war die strengere Lesart,
+    // aber die falsche: `isAvailable()` fragt das Faehigkeits-Register, und
+    // die Bruecke bildet dort Nabe weg, Fehlerantwort, fehlende Freigabe und
+    // fehlende Faehigkeit auf DIESELBE leere Liste ab. Ein System
+    // verschwand damit aus der Maske, und niemand konnte mehr sagen, ob man
+    // warten oder jemanden holen muss.
+    //
+    // „Laesst sich aus diesem System ueberhaupt einplanen?" ist lokal und
+    // statisch — `instanceof` —, und „hat es geklappt?" beantwortet der
+    // Versuch, samt Grund. Der Vier-Lagen-Test unten weist das an der echten
+    // Brueckenquelle nach.
     $register = new TaskSourceRegistry;
     $register->register(new ErfundenePlanquelle('weg', verfuegbar: false));
 
-    expect($register->plannable())->toBeEmpty();
+    expect(array_keys($register->plannable()))->toBe(['weg'])
+        // Die lesende Seite bleibt, wie sie ist: Aufgaben eines Systems, das
+        // nicht antwortet, werden weiter nicht gefragt.
+        ->and($register->available())->toBeEmpty();
 });
 
-it('trennt die drei Vorgaenge, statt sie zu einem Schalter zu machen', function () {
-    // Der gemessene Fall: Die Verwaltung hat `UpdateTaskTool` und
-    // `DeleteTaskTool` und KEIN `CreateTaskTool`. Ein Schalter fuer alles
-    // haette sie entweder ganz planbar gemacht oder gar nicht.
-    $register = new TaskSourceRegistry;
-    $register->register(new ErfundenePlanquelle('nur-aendern', vorgaenge: [
+it('filtert die drei Vorgaenge nicht vorab, sondern laesst sie beim Versuch scheitern', function () {
+    // Umgeschrieben mit #10056. Vorher hiess dieser Test „trennt die drei
+    // Vorgaenge, statt sie zu einem Schalter zu machen" und erwartete, dass
+    // `plannableFor(create)` die Verwaltung herausfiltert — ueber `offers()`,
+    // also ueber das Netz. Dieselbe Antwort `false` steht dort aber auch fuer
+    // „Nabe weg" und „Freigabe fehlt", und die Maske haette die Verwaltung
+    // in allen drei Faellen gleich stumm weggelassen.
+    //
+    // Die drei Vorgaenge bleiben getrennt — im Vertrag (drei Faehigkeiten,
+    // kein Schalter) und in `offers()`, das weiter misst, was die Gegenseite
+    // gerade anbietet. Nur fragt die Liste einer Maske es nicht mehr VOR dem
+    // Zeichnen: Das Nein kommt aus `plan()`, als `not_offered`.
+    $verwaltung = new ErfundenePlanquelle('nur-aendern', vorgaenge: [
         PlansForeignTasks::CAPABILITY_UPDATE,
         PlansForeignTasks::CAPABILITY_DELETE,
-    ]));
+    ]);
+    $register = new TaskSourceRegistry;
+    $register->register($verwaltung);
 
-    expect($register->plannableFor(PlansForeignTasks::CAPABILITY_CREATE))->toBeEmpty()
-        ->and(array_keys($register->plannableFor(PlansForeignTasks::CAPABILITY_UPDATE)))
-        ->toBe(['nur-aendern'])
-        ->and(array_keys($register->plannableFor(PlansForeignTasks::CAPABILITY_DELETE)))
-        ->toBe(['nur-aendern']);
+    foreach (PlansForeignTasks::CAPABILITIES as $vorgang) {
+        expect(array_keys($register->plannableFor($vorgang)))->toBe(['nur-aendern']);
+    }
+
+    expect($verwaltung->offers(PlansForeignTasks::CAPABILITY_CREATE))->toBeFalse()
+        ->and($verwaltung->offers(PlansForeignTasks::CAPABILITY_UPDATE))->toBeTrue();
 });
 
 it('wirft bei einem Vorgang, den es nicht gibt, statt eine leere Liste zu liefern', function () {
@@ -286,6 +308,101 @@ it('wirft bei einem Vorgang, den es nicht gibt, statt eine leere Liste zu liefer
     expect(fn () => $register->plannableFor('tasks.schedule.list'))
         ->toThrow(InvalidArgumentException::class);
 });
+
+/*
+|--------------------------------------------------------------------------
+| Vier Lagen, eine Antwort vorher, vier Gruende beim Versuch (#10056)
+|--------------------------------------------------------------------------
+|
+| Ueber die Bruecke liefert `providers()` in vier Lagen dasselbe: eine leere
+| Liste. Nabe weg, Freigabe weg, Faehigkeit fehlt — und nur die vierte Lage,
+| „alles in Ordnung", unterscheidet sich. Eine Vorpruefung ueber diesen Weg
+| bildet drei Gruende auf einen ab.
+|
+| Nach der Umstellung muss `plannable()` in ALLEN VIER Lagen dieselbe Antwort
+| geben, ohne das Netz zu fragen, und der Unterschied wird erst beim Versuch
+| sichtbar: als Fehlerklasse, die die Maske in vier Saetze uebersetzt.
+*/
+
+dataset('lagen der nabe', [
+    'Nabe weg' => [
+        [],
+        ['ok' => false, 'error' => SourceFailure::UNREACHABLE, 'message' => 'AI Brain nicht erreichbar: Connection refused'],
+        SourceFailure::UNREACHABLE,
+    ],
+    'Freigabe weg' => [
+        [],
+        ['ok' => false, 'error' => SourceFailure::NOT_ALLOWED, 'message' => 'Fuer „tasks.schedule.create" ist dieses System nicht freigeschaltet.'],
+        SourceFailure::NOT_ALLOWED,
+    ],
+    'Faehigkeit fehlt' => [
+        [],
+        ['ok' => false, 'error' => SourceFailure::NOT_OFFERED, 'message' => '„tasks.schedule.create" bietet dieses System nicht an.'],
+        SourceFailure::NOT_OFFERED,
+    ],
+    'alles in Ordnung' => [
+        [['slug' => 'peppermint-crm', 'key' => 'crm', 'label' => 'CRM']],
+        ['ok' => true, 'data' => [
+            'id' => 42,
+            'title' => 'Angebot Meier',
+            'starts_at' => '2026-11-17T09:00:00+01:00',
+            'ends_at' => '2026-11-17T11:00:00+01:00',
+            'kind' => 'crm_task',
+        ]],
+        null,
+    ],
+]);
+
+it('gibt in jeder Lage der Nabe dieselbe Antwort auf „planbar?" und zeigt den Unterschied erst beim Versuch', function (array $anbieter, array $antwort, ?string $grund) {
+    planungBereit();
+
+    // Jede Frage an das Register wird mitgeschrieben. `plannable()` darf
+    // keine stellen — nicht weil es teuer waere, sondern weil die Antwort
+    // dort in drei von vier Lagen luegt.
+    $gefragt = [];
+    AiBrain::shouldReceive('providers')->andReturnUsing(function (string $vorgang) use (&$gefragt, $anbieter) {
+        $gefragt[] = $vorgang;
+
+        return $anbieter;
+    });
+    AiBrain::shouldReceive('gateway')->andReturn($antwort);
+
+    $register = new TaskSourceRegistry;
+    $register->register(new BrueckenSubjektquelle('peppermint-crm', 'crm', 'CRM'));
+
+    // VORHER: in allen vier Lagen dieselbe Antwort, und kein Netz.
+    expect(array_keys($register->plannable()))->toBe(['crm']);
+    foreach (PlansForeignTasks::CAPABILITIES as $vorgang) {
+        expect(array_keys($register->plannableFor($vorgang)))->toBe(['crm']);
+    }
+    expect($gefragt)->toBe([]);
+
+    // Was das Register heute NICHT mehr fragt, und warum: `offers()` sagt in
+    // den ersten drei Lagen dasselbe `false`. Es misst richtig — nur kann
+    // niemand aus diesem `false` lesen, was zu tun ist.
+    expect($register->plannable()['crm']->offers(PlansForeignTasks::CAPABILITY_CREATE))
+        ->toBe($grund === null);
+
+    // BEIM VERSUCH: vier unterscheidbare Ausgaenge.
+    try {
+        $block = $register->plannable()['crm']->plan(1, 11, new TimeSpan(
+            '2026-11-17T09:00:00+01:00',
+            '2026-11-17T11:00:00+01:00',
+        ));
+        $fehler = null;
+    } catch (ForeignSourceFailed $e) {
+        $block = null;
+        $fehler = $e;
+    }
+
+    if ($grund === null) {
+        expect($fehler)->toBeNull()
+            ->and($block?->id)->toBe(42);
+    } else {
+        expect($block)->toBeNull()
+            ->and($fehler?->errorClass)->toBe($grund);
+    }
+})->with('lagen der nabe');
 
 /*
 |--------------------------------------------------------------------------

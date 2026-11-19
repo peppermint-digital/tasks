@@ -126,7 +126,16 @@ interface PlansForeignTasks
      *
      * Measured rather than configured, like {@see TaskSource::isAvailable()}:
      * loses the other side the capability, or is the grant withdrawn, the
-     * operation disappears by itself — nobody has to remember a switch.
+     * answer changes by itself — nobody has to remember a switch.
+     *
+     * NOT what a mask filters its system list by (#10056). Over the bridge an
+     * unreachable hub, an error answer, a missing grant and a capability that
+     * is really not offered all come back as the same `false`, and three of
+     * those four need a different sentence than "not offered". The registry
+     * therefore answers "plannable at all?" locally
+     * ({@see TaskSourceRegistry::plannable()}), and the reason comes from the
+     * attempt — `plan()`, `move()` and `unplan()` throw with the other side's
+     * error class.
      *
      * @param  string  $capability  one of {@see CAPABILITIES}
      */

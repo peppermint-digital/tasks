@@ -126,6 +126,45 @@ it('haengt am Tabellennamen des Produkts, nicht an „tasks"', function () {
         ->and($ticket->taskReminders()->count())->toBe(1);
 });
 
+it('nimmt in down() nur zurueck, was up() hinterlassen hat — auch unter einem umgesetzten Tabellennamen', function () {
+    // Bug #1500. Der Tabellenname kommt in up() UND down() frisch aus
+    // config(). Steht er dazwischen anders, laeuft down() auf einer Tabelle,
+    // auf der up() nie lief. Dort kann es die Spalte `source` trotzdem geben —
+    // die Uebernahme von peppermint/reminders legt sie selbst an —, den Index
+    // aber nicht. Fragt down() die Spalte, will es einen Index loeschen, den
+    // niemand angelegt hat: „no such index".
+    //
+    // Der Test baut die Lage selbst, statt sie dem Abbau am Testende zu
+    // ueberlassen. Dort haengt sie an der Fassung des Erinnerungs-Pakets im
+    // vendor: Eine aeltere loescht die uebernommene Tabelle vorher mit, und der
+    // Fehler bleibt unsichtbar — genau so war er im Hauptbaum gruen.
+    expect(Schema::hasIndex('task_reminders', ['task_id', 'source']))->toBeTrue();
+
+    Schema::create('ticket_reminders', function ($t) {
+        $t->id();
+        $t->unsignedBigInteger('task_id');
+        $t->string('source')->nullable();
+    });
+    config()->set('tasks.tables.task_reminders', 'ticket_reminders');
+
+    (require __DIR__.'/../../database/migrations/2026_09_17_120000_add_source_to_task_reminders_table.php')->down();
+
+    // Fremdes bleibt stehen, und die Tabelle, auf der up() lief, ist unberuehrt.
+    expect(Schema::hasColumn('ticket_reminders', 'source'))->toBeTrue()
+        ->and(Schema::hasIndex('task_reminders', ['task_id', 'source']))->toBeTrue();
+});
+
+it('nimmt in down() Index und Spalte zurueck, wo up() sie angelegt hat', function () {
+    // Die Gegenseite: Der Riegel darf down() nicht stumm machen. Wo der Index
+    // liegt, hat diese Migration ihn gelegt — dann geht er, und die Spalte mit.
+    expect(Schema::hasIndex('task_reminders', ['task_id', 'source']))->toBeTrue();
+
+    (require __DIR__.'/../../database/migrations/2026_09_17_120000_add_source_to_task_reminders_table.php')->down();
+
+    expect(Schema::hasIndex('task_reminders', ['task_id', 'source']))->toBeFalse()
+        ->and(Schema::hasColumn('task_reminders', 'source'))->toBeFalse();
+});
+
 it('legt die Tabelle nicht an, wenn das Produkt sie schon hat', function () {
     // Der Manager traegt seine seit 12/2025. Er uebernimmt das Paket DARUEBER,
     // statt migriert zu werden.

@@ -38,7 +38,15 @@ return new class extends Migration
     {
         $table = config('tasks.tables.task_reminders', 'task_reminders');
 
-        if (! Schema::hasTable($table) || ! Schema::hasColumn($table, 'source')) {
+        // Der INDEX entscheidet, nicht die Spalte (Bug #1500). Der Name kommt
+        // frisch aus config() — wer ihn zwischen up() und down() umsetzt (ein
+        // Test, ein Produkt mit eigener Tabelle), schickt down() auf eine
+        // Tabelle, auf der up() nie lief. Die Spalte `source` kann es dort
+        // trotzdem geben: Die Uebernahme von peppermint/reminders legt sie
+        // selbst an. Dann gehoert sie nicht uns, und der Index war nie da —
+        // `dropIndex` braeche ab mit „no such index". Den Index legt nur
+        // diese Migration an; wo er fehlt, hat sie hier nichts hinterlassen.
+        if (! Schema::hasTable($table) || ! Schema::hasIndex($table, ['task_id', 'source'])) {
             return;
         }
 

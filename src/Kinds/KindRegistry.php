@@ -52,4 +52,18 @@ class KindRegistry
     {
         return array_filter($this->kinds, fn (TaskKind $kind) => $kind->isUserCreatable());
     }
+
+    /**
+     * The kinds that belong to one area, e.g. a module of the monolith.
+     *
+     * Kinds without an area are never part of any area. An area nobody
+     * registered gives an empty list, not an error: "no CRM tasks yet" is a
+     * normal state, not a typo the registry could detect.
+     *
+     * @return array<string, TaskKind>
+     */
+    public function forArea(string $area): array
+    {
+        return array_filter($this->kinds, fn (TaskKind $kind) => $kind->area() === $area);
+    }
 }

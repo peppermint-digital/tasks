@@ -31,6 +31,24 @@ abstract class TaskKind
     abstract public function label(): string;
 
     /**
+     * The module or product this kind belongs to, or null when the
+     * application does not divide its tasks that way.
+     *
+     * One table, many owners. Once the CRM moved into the monolith its kinds
+     * kept their own fields (see `profileModel()`) but lost the place they
+     * came from, and a task has to know what it belongs to. The answer lives
+     * on the kind and not in a column: every task of a kind belongs to the
+     * same area, so a column would only be a second place to get it wrong.
+     *
+     * Free text on purpose. The package knows no modules; the application
+     * names its own (the monolith uses the module name).
+     */
+    public function area(): ?string
+    {
+        return null;
+    }
+
+    /**
      * Profile model holding this kind's own fields (1:1 with the task), or null
      * when the kind needs no extra fields.
      *

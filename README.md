@@ -52,6 +52,31 @@ across systems hang on it.
 'priorities' => [Low::class, Medium::class, High::class],
 ```
 
+### Kinds and their area
+
+Kinds are a registry too (`'kinds' => [...]`, one `TaskKind` subclass each). A
+kind may name the **area** it belongs to — a module of the monolith, a product.
+One task table, many owners: the CRM's kinds keep their own fields through
+`profileModel()` and say where they come from through `area()`.
+
+```php
+class Callback extends TaskKind
+{
+    public function key(): string { return 'callback'; }
+    public function label(): string { return 'Callback'; }
+    public function area(): ?string { return 'crm'; }   // default: null
+}
+
+app(KindRegistry::class)->forArea('crm');   // ['callback' => Callback]
+$task->kindArea();                          // 'crm'
+Task::inArea('crm')->get();                 // tasks whose kind belongs to the CRM
+```
+
+No column: every task of a kind belongs to the same area, so the area lives on
+the kind. An area without registered kinds matches nothing, never everything.
+`kindArea()` is not called `area()` because a product's model may have an
+`area` of its own.
+
 ## Urgency
 
 A weighted sum whose parts stay visible — `urgencyBreakdown()` returns the score

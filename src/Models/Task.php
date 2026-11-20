@@ -135,6 +135,18 @@ class Task extends Model
         return $registry->has($key) ? $registry->get($key) : null;
     }
 
+    /**
+     * The area this task belongs to, read off its kind. Null when the task has
+     * no kind, an unregistered one, or a kind without an area.
+     *
+     * Not called `area()`: a product extending this model may well have an
+     * `area` column or relation of its own.
+     */
+    public function kindArea(): ?string
+    {
+        return $this->kindDefinition()?->area();
+    }
+
     public function priorityDefinition(): ?TaskPriority
     {
         $key = static::scalar($this->field('priority'));
@@ -263,5 +275,16 @@ class Task extends Model
     public function scopeOpen($query)
     {
         return $query->whereIn(static::column('status'), app(StatusRegistry::class)->openKeys());
+    }
+
+    /**
+     * Tasks of one area, via the kinds that belong to it — no column needed.
+     *
+     * An area without registered kinds matches nothing, not everything: a
+     * filter that silently widens to all tasks is the expensive kind of wrong.
+     */
+    public function scopeInArea($query, string $area)
+    {
+        return $query->whereIn(static::column('kind'), array_keys(app(KindRegistry::class)->forArea($area)));
     }
 }

@@ -76,3 +76,18 @@ describe('eine Gegenstelle, die nicht erreichbar ist', () => {
         expect(screen.queryByText(/cURL error 28/)).toBeNull();
     });
 });
+
+describe('der Satz der Gegenstelle bleibt kurz', () => {
+    it('wird auf zwei Zeilen geklemmt, ohne dass eine display-Klasse die Klemme aufhebt', () => {
+        // v0.19.1 setzte `line-clamp-2 block`. `block` steht im erzeugten CSS
+        // hinter `line-clamp-2` und ersetzt dessen `display: -webkit-box` —
+        // in Produktion lief der Satz dann ueber vier Zeilen.
+        karte({ source: 'verwaltung', reason: 'tool_failed', message: ABSAGE_DER_VERWALTUNG, may_retry: true });
+
+        const satz = screen.getByText(ABSAGE_DER_VERWALTUNG, { exact: false });
+        const klassen = satz.className.split(/\s+/);
+
+        expect(klassen).toContain('line-clamp-2');
+        expect(klassen.filter((k) => ['block', 'inline', 'inline-block', 'flex', 'grid'].includes(k))).toEqual([]);
+    });
+});

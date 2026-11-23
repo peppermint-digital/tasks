@@ -187,7 +187,7 @@ export function FremdeVorgaenge({
                                                 <span className="font-medium">{daten?.sources[fehlt.source]?.label ?? fehlt.source}</span>{' '}
                                                 <span title={fehlt.message ?? undefined}>{satzZurAbsage(fehlt)}</span>
                                                 {ihrSatz && (
-                                                    <span className="mt-0.5 line-clamp-2 block opacity-80" title={ihrSatz}>
+                                                    <span className="mt-0.5 line-clamp-2 opacity-80" title={ihrSatz}>
                                                         {ihrSatz}
                                                     </span>
                                                 )}

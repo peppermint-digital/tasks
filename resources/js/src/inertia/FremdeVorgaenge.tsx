@@ -107,12 +107,36 @@ function satzZurAbsage(fehlt: Ausfall): string {
         return 'beantwortet diese Frage nicht.';
     }
 
-    // „Unerreichbar" und „das Werkzeug ist gescheitert" können vorübergehen —
-    // nur dann darf ein erneutes Laden angeboten werden. Bei einer fehlenden
-    // Freigabe wäre es ein falsches Versprechen.
-    return fehlt.may_retry
-        ? 'antwortet gerade nicht — ein erneutes Laden kann helfen.'
-        : 'konnte nicht gefragt werden.';
+    if (fehlt.reason === 'tool_failed') {
+        // Die Gegenstelle HAT geantwortet — nur eben mit einem Fehler. „Antwortet
+        // gerade nicht" war hier falsch (Bug #1551): Die Verwaltung lehnte jede
+        // Frage nach einem Projekt mit demselben Satz ab, und die Karte bot
+        // tagelang das Neuladen an, als sei sie nur kurz weg gewesen. Was der
+        // Fehler bedeutet, sagt ihr eigener Satz darunter.
+        return 'hat die Frage mit einem Fehler beantwortet.';
+    }
+
+    // „Unerreichbar" kann vorübergehen — nur dann darf ein erneutes Laden
+    // angeboten werden. Bei einer fehlenden Freigabe wäre es ein falsches
+    // Versprechen.
+    return fehlt.may_retry ? 'antwortet gerade nicht — ein erneutes Laden kann helfen.' : 'konnte nicht gefragt werden.';
+}
+
+/**
+ * Der Satz der Gegenstelle — nur, wenn sie überhaupt etwas gesagt hat.
+ *
+ * Bei `tool_failed`, `not_offered` und `not_allowed` hat das andere System
+ * geantwortet, und sein Satz ist meist genauer als unserer: „Dieses System
+ * führt Vorgänge zu auftrag" sagt, warum hier nichts kommt. Bei `unreachable`
+ * (und ohne Klasse) hat es nichts gesagt; was dann in `message` steht, ist die
+ * Leitung („cURL error 28 …") und taugt für den Menschen davor nicht. Es bleibt
+ * im Titel, für wen es sucht.
+ */
+function satzDerGegenstelle(fehlt: Ausfall): string | null {
+    const geantwortet = fehlt.reason === 'tool_failed' || fehlt.reason === 'not_offered' || fehlt.reason === 'not_allowed';
+    const satz = fehlt.message?.trim();
+
+    return geantwortet && satz ? satz : null;
 }
 
 export function FremdeVorgaenge({
@@ -148,19 +172,28 @@ export function FremdeVorgaenge({
                             >
                                 <p className="font-medium text-amber-900 dark:text-amber-200">Diese Liste ist unvollständig.</p>
                                 <ul className="mt-1 space-y-0.5 text-xs text-amber-800 dark:text-amber-300">
-                                    {fehlend.map((fehlt) => (
-                                        <li key={fehlt.source}>
-                                            {/*
-                                              * `message` als Titel: Der Satz, den das andere
-                                              * System geschickt hat, ist oft genauer als unser
-                                              * aus der Klasse gebauter — aber er ist auch roher
-                                              * Text aus einem fremden Haus. Vorne steht der
-                                              * verlaessliche Satz, daneben steht seiner.
-                                              */}
-                                            <span className="font-medium">{daten?.sources[fehlt.source]?.label ?? fehlt.source}</span>{' '}
-                                            <span title={fehlt.message ?? undefined}>{satzZurAbsage(fehlt)}</span>
-                                        </li>
-                                    ))}
+                                    {fehlend.map((fehlt) => {
+                                        const ihrSatz = satzDerGegenstelle(fehlt);
+
+                                        return (
+                                            <li key={fehlt.source}>
+                                                {/*
+                                                  * Vorne der verlaessliche, aus der Klasse gebaute
+                                                  * Satz. Darunter der des anderen Systems, wenn es
+                                                  * etwas gesagt hat (Bug #1551) — als roher Text aus
+                                                  * einem fremden Haus nie als Markup, auf zwei
+                                                  * Zeilen begrenzt, ganz im Titel.
+                                                  */}
+                                                <span className="font-medium">{daten?.sources[fehlt.source]?.label ?? fehlt.source}</span>{' '}
+                                                <span title={fehlt.message ?? undefined}>{satzZurAbsage(fehlt)}</span>
+                                                {ihrSatz && (
+                                                    <span className="mt-0.5 line-clamp-2 block opacity-80" title={ihrSatz}>
+                                                        {ihrSatz}
+                                                    </span>
+                                                )}
+                                            </li>
+                                        );
+                                    })}
                                 </ul>
                             </div>
                         )}

@@ -168,10 +168,10 @@ export function FremdeVorgaenge({
                         {fehlend.length > 0 && (
                             <div
                                 role="status"
-                                className="rounded-md border border-amber-300 bg-amber-50 p-2 text-sm dark:border-amber-900 dark:bg-amber-950"
+                                className="rounded-md border border-warning-border bg-warning-subtle p-2 text-sm text-warning-subtle-foreground"
                             >
-                                <p className="font-medium text-amber-900 dark:text-amber-200">Diese Liste ist unvollständig.</p>
-                                <ul className="mt-1 space-y-0.5 text-xs text-amber-800 dark:text-amber-300">
+                                <p className="font-medium">Diese Liste ist unvollständig.</p>
+                                <ul className="mt-1 space-y-0.5 text-xs opacity-90">
                                     {fehlend.map((fehlt) => {
                                         const ihrSatz = satzDerGegenstelle(fehlt);
 

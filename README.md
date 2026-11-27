@@ -836,8 +836,14 @@ import { FremdeVorgaenge } from '@peppermint-digital/tasks/inertia';
     daten={fremdeVorgaenge}
     beschreibung="Was im CRM und im Manager zu diesem Auftrag liegt"
     leer="In den anderen Systemen liegt nichts zu diesem Auftrag."
+    hinweis={verborgen > 0 ? 'Ein Projekt fehlt hier, weil dir der Zugriff fehlt.' : null}
 />
 ```
+
+`hinweis` (since v0.19.4) is a sentence from the product, shown under the list
+once the data has arrived — for example that part of the list is missing
+because the viewer lacks a right. The product knows *what* is missing; the card
+decides how it looks, so no product puts its own paragraph under the card.
 
 The server side fills that prop from `TaskSourceRegistry::collectForSubject()`
 — tasks, failures and the source list, so the card can name the system that is

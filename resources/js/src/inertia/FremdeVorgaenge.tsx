@@ -96,6 +96,16 @@ interface Props {
     beschreibung?: string;
     /** Was dasteht, wenn wirklich nichts dazugehört. */
     leer?: string;
+    /**
+     * Ein Satz des Produkts unter der Liste — etwa, dass ein Teil fehlt,
+     * weil das Recht dafür fehlt (peppermint-manager #10342).
+     *
+     * Der Satz kommt vom Produkt, weil nur es weiß, was fehlt. Die
+     * Darstellung liegt hier, damit sie in allen Produkten gleich ist und
+     * kein Produkt einen eigenen Absatz unter die Karte setzt. Erscheint
+     * erst mit den Daten, also innerhalb von `Deferred`.
+     */
+    hinweis?: string | null;
 }
 
 function satzZurAbsage(fehlt: Ausfall): string {
@@ -145,6 +155,7 @@ export function FremdeVorgaenge({
     titel = 'Vorgänge der anderen Systeme',
     beschreibung,
     leer = 'In den anderen Systemen liegt nichts dazu.',
+    hinweis,
 }: Props) {
     const fehlend = daten ? Object.values(daten.failures) : [];
 
@@ -256,6 +267,12 @@ export function FremdeVorgaenge({
                         ) : (
                             <p className="text-sm text-muted-foreground">
                                 {daten && Object.keys(daten.sources).length === 0 ? 'Kein anderes System beantwortet diese Frage.' : leer}
+                            </p>
+                        )}
+
+                        {hinweis && (
+                            <p data-slot="fremde-vorgaenge-hinweis" className="text-xs text-muted-foreground">
+                                {hinweis}
                             </p>
                         )}
                     </div>
